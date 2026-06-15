@@ -2,8 +2,14 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
-const toolRoot = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const toolRoot = path.dirname(__filename);
 const configPath = path.join(toolRoot, "config.local.json");
+
+console.log(toolRoot);
+console.log(configPath);
 
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
