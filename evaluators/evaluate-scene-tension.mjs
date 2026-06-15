@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const toolRoot = path.dirname(__filename);
-const configPath = path.join(toolRoot, "config.local.json");
+const configPath = path.join(toolRoot, "..", "config.local.json");
 
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
@@ -56,7 +56,6 @@ parsed.data.ai.model = config.model;
 parsed.data.ai.tension = parsed.data.ai.tension ?? {};
 parsed.data.ai.tension.scene = scores.ai_tension;
 parsed.data.ai.tension.updated = new Date().toISOString();
-
 
 const updated = matter.stringify(parsed.content, parsed.data);
 fs.writeFileSync(filePath, updated, "utf8");
