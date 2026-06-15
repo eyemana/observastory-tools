@@ -51,9 +51,12 @@ const response = await fetch(config.ollamaUrl, {
 const result = await response.json();
 const scores = JSON.parse(result.response);
 
-parsed.data.ai_tension = scores.ai_tension;
-parsed.data.ai_model = config.model;
-parsed.data.ai_updated = new Date().toISOString();
+parsed.data.ai = parsed.data.ai ?? {};
+parsed.data.ai.model = config.model;
+parsed.data.ai.tension = parsed.data.ai.tension ?? {};
+parsed.data.ai.tension.scene = scores.ai_tension;
+parsed.data.ai.tension.updated = new Date().toISOString();
+
 
 const updated = matter.stringify(parsed.content, parsed.data);
 fs.writeFileSync(filePath, updated, "utf8");
