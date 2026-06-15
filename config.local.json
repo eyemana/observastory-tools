@@ -1,0 +1,4 @@
+{
+	  "ollamaUrl": "http://localhost:11434/api/generate",
+	    "model": "qwen2.5:7b"
+}
