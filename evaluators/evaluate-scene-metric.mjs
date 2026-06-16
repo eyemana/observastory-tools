@@ -7,7 +7,8 @@ import {
   findAncestorFolder,
   readDefinition,
   readDefinitions,
-  formatDefinitions
+  formatDefinitions,
+  toCamelCase
 } from "../vault-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -17,20 +18,23 @@ const configPath = path.join(toolRoot, "..", "config.local.json");
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 
 const filePath = process.argv[2];
+const metricName = process.argv[3];
 
-if (!filePath) {
-  console.error("Usage: node evaluate-scene-relevance.mjs <file>");
+if (!filePath || !metricName) {
+  console.error("Usage: node evaluate-scene-metric.mjs <file> <metricName>");
   process.exit(1);
 }
+const metricKey = toCamelCase(metricName);
 
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 
 const pocRoot = findAncestorFolder(filePath, "POC");
-const relevanceDefinition = readDefinition(
+
+const metricDefinition = readDefinition(
   pocRoot,
   "Metrics",
-  "Relevance"
+  metricName
 );
 
 const characterNames = parsed.data.characters ?? [];
@@ -43,23 +47,23 @@ const characterDefinitions = formatDefinitions(
   )
 );
 
-const threadNames = parsed.data.threads ?? [];
+const plotThreadNames = parsed.data.plotThreads ?? [];
 
-const threadDefinitions = formatDefinitions(
+const plotThreadDefinitions = formatDefinitions(
   readDefinitions(
     pocRoot,
     "Plot Threads",
-    threadNames
+    plotThreadNames
   )
 );
 
-const engineNames = parsed.data.engines ?? [];
+const storyEngineNames = parsed.data.storyEngines ?? [];
 
-const engineDefinitions = formatDefinitions(
+const storyEngineDefinitions = formatDefinitions(
   readDefinitions(
     pocRoot,
     "Story Engines",
-    engineNames
+    storyEngineNames
   )
 );
 
@@ -74,20 +78,28 @@ const arcDefinitions = formatDefinitions(
 );
 
 const prompt = `
-Return JSON only.  When creating keys for kvp, always use values from frontmatter, if possible.
-The rationale-related JSON elements are to be supplied by you as a sentence supporting the associated score value you gave.
+Return JSON only.
+Characters to score:
+${JSON.stringify(parsed.data.characters ?? [], null, 2)}
 
-Use this Relevance Rubric:
-${relevanceDefinition}
+Use EXACTLY these character names as JSON keys.
+Do not shorten names.
+Do not use first names.
+Do not add characters not listed here.
+
+The rationale-related JSON elements are to be supplied by you as a single entence supporting the associated score value you gave.
 
 Use these character definitions
 ${characterDefinitions}
 
+Use this definition of ${metricName}:
+${metricDefinition}
+
 Use these Plot thread definitions:
-${threadDefinitions}
+${plotThreadDefinitions}
 
 Use these Story Engine definitions:
-${engineDefinitions}
+${storyEngineDefinitions}
 
 Use these Arc definitions:
 ${arcDefinitions}
@@ -106,14 +118,14 @@ Required JSON:
       "rationale": string
     }
   },
-  "threads": {
-    "threadName": {
+  "plotThreads": {
+    "plotThreadName": {
       "score": number,
       "rationale": string
     }
   },
-  "engines": {
-    "engineName": {
+  "storyEngines": {
+    "storyEngineName": {
       "score": number,
       "rationale": string
     }
@@ -141,6 +153,7 @@ const response = await fetch(config.ollamaUrl, {
 });
 
 const result = await response.json();
+
 const scores = JSON.parse(result.response);
 
 const normalizedCharacters = {};
@@ -175,37 +188,37 @@ for (const characterName of characterNames) {
 }
 
 if (typeof scores.scene !== "number") {
-  throw new Error(`Invalid scene score: ${result.response}`);
+  throw new Error(`Invalid scene ${metricKey} score: ${result.response}`);
 }
 
 if (typeof scores.sceneRationale !== "string") {
-  throw new Error(`Invalid scene rationale: ${result.response}`);
+  throw new Error(`Invalid scene ${metricKey} rationale: ${result.response}`);
 }
 
 if (!scores.characters || typeof scores.characters !== "object") {
-  throw new Error(`Invalid character scores: ${result.response}`);
+  throw new Error(`Invalid character ${metricKey} scores: ${result.response}`);
 }
 
-if (!scores.threads || typeof scores.threads !== "object") {
-  throw new Error(`Invalid thread resolution scores: ${result.response}`);
+if (!scores.plotThreads || typeof scores.plotThreads !== "object") {
+  throw new Error(`Invalid plotThreads ${metricKey} scores: ${result.response}`);
 }
 
-if (!scores.engines || typeof scores.engines !== "object") {
-  throw new Error(`Invalid engine resolution scores: ${result.response}`);
+if (!scores.storyEngines || typeof scores.storyEngines !== "object") {
+  throw new Error(`Invalid storyEngine ${metricKey} scores: ${result.response}`);
 }
 
 if (!scores.arcs || typeof scores.arcs !== "object") {
-  throw new Error(`Invalid arc resolution scores: ${result.response}`);
+  throw new Error(`Invalid arc ${metricKey} scores: ${result.response}`);
 }
-
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
-parsed.data.ai.relevance = {
+
+parsed.data.ai[metricKey] = {
   scene: scores.scene,
   sceneRationale: scores.sceneRationale,
   characters: normalizedCharacters,
-  threads: scores.threads,
-  engines: scores.engines,
+  plotThreads: scores.plotThreads,
+  storyEngines: scores.storyEngines,
   arcs: scores.arcs,
   updated: new Date().toISOString()
 };

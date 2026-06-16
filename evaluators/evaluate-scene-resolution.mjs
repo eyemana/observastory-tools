@@ -19,7 +19,7 @@ const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
 const filePath = process.argv[2];
 
 if (!filePath) {
-  console.error("Usage: node evaluate-scene-relevance.mjs <file>");
+  console.error("Usage: node evaluate-scene-resolution.mjs <file>");
   process.exit(1);
 }
 
@@ -27,10 +27,10 @@ const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 
 const pocRoot = findAncestorFolder(filePath, "POC");
-const relevanceDefinition = readDefinition(
+const resolutionDefinition = readDefinition(
   pocRoot,
   "Metrics",
-  "Relevance"
+  "Resolution"
 );
 
 const characterNames = parsed.data.characters ?? [];
@@ -77,14 +77,14 @@ const prompt = `
 Return JSON only.  When creating keys for kvp, always use values from frontmatter, if possible.
 The rationale-related JSON elements are to be supplied by you as a sentence supporting the associated score value you gave.
 
-Use this Relevance Rubric:
-${relevanceDefinition}
-
-Use these character definitions
-${characterDefinitions}
+Use this Resolution Rubric:
+${resolutionDefinition}
 
 Use these Plot thread definitions:
 ${threadDefinitions}
+
+Use these character definitions
+${characterDefinitions}
 
 Use these Story Engine definitions:
 ${engineDefinitions}

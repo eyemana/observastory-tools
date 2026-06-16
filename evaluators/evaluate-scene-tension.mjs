@@ -44,6 +44,36 @@ const characterDefinitions = formatDefinitions(
   )
 );
 
+const threadNames = parsed.data.threads ?? [];
+
+const threadDefinitions = formatDefinitions(
+  readDefinitions(
+    pocRoot,
+    "Plot Threads",
+    threadNames
+  )
+);
+
+const engineNames = parsed.data.engines ?? [];
+
+const engineDefinitions = formatDefinitions(
+  readDefinitions(
+    pocRoot,
+    "Story Engines",
+    engineNames
+  )
+);
+
+const arcNames = parsed.data.arcs ?? [];
+
+const arcDefinitions = formatDefinitions(
+  readDefinitions(
+    pocRoot,
+    "Arcs",
+    arcNames
+  )
+);
+
 const prompt = `
 Return JSON only.
 Characters to score:
@@ -62,6 +92,15 @@ ${characterDefinitions}
 Use this definition of Tension:
 ${tensionDefinition}
 
+Use these Plot thread definitions:
+${threadDefinitions}
+
+Use these Story Engine definitions:
+${engineDefinitions}
+
+Use these Arc definitions:
+${arcDefinitions}
+
 Scene:
 
 ${parsed.content}
@@ -72,6 +111,24 @@ Required JSON:
   "sceneRationale": string,
   "characters": {
     "characterName": {
+      "score": number,
+      "rationale": string
+    }
+  },
+  "threads": {
+    "threadName": {
+      "score": number,
+      "rationale": string
+    }
+  },
+  "engines": {
+    "engineName": {
+      "score": number,
+      "rationale": string
+    }
+  },
+  "arcs": {
+    "arcName": {
       "score": number,
       "rationale": string
     }
@@ -131,10 +188,25 @@ if (typeof scores.scene !== "number") {
   throw new Error(`Invalid scene score: ${result.response}`);
 }
 
+if (typeof scores.sceneRationale !== "string") {
+  throw new Error(`Invalid scene rationale: ${result.response}`);
+}
+
 if (!scores.characters || typeof scores.characters !== "object") {
   throw new Error(`Invalid character scores: ${result.response}`);
 }
 
+if (!scores.threads || typeof scores.threads !== "object") {
+  throw new Error(`Invalid thread resolution scores: ${result.response}`);
+}
+
+if (!scores.engines || typeof scores.engines !== "object") {
+  throw new Error(`Invalid engine resolution scores: ${result.response}`);
+}
+
+if (!scores.arcs || typeof scores.arcs !== "object") {
+  throw new Error(`Invalid arc resolution scores: ${result.response}`);
+}
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 
@@ -142,6 +214,9 @@ parsed.data.ai.tension = {
   scene: scores.scene,
   sceneRationale: scores.sceneRationale,
   characters: normalizedCharacters,
+  threads: scores.threads,
+  engines: scores.engines,
+  arcs: scores.arcs,
   updated: new Date().toISOString()
 };
 
