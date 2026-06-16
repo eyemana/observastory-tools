@@ -33,6 +33,16 @@ For overal scene tension, the POV tension value carries the most weight.
 Characters may be present, absent, referenced, remembered, feared, desired, or influencing the scene indirectly.
 Tension scores are from each character's perspective.  A character may be in danger and not know it even though the reader does, or another character does, in which case the endangered character's tension would be low.
 
+1 - 2: low/no narrative pressure
+3 - 4: mild concern, setup, routine uncertainty
+5 - 6: active conflict or meaningful complication
+7 - 8: serious stakes, hidden danger, reversal, exposure risk
+9 - 10: immediate crisis, irreversible consequence, major reveal, confrontation
+
+Use the full 1–10 range when appropriate.
+Do not default to 7.
+A quiet administrative scene should usually score below 5 unless it contains strong hidden threat.
+
 Frontmatter characters:
 ${JSON.stringify(parsed.data.characters ?? [], null, 2)}
 
