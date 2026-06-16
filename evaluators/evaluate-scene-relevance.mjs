@@ -3,6 +3,12 @@ import path from "path";
 import matter from "gray-matter";
 
 import { fileURLToPath } from "url";
+import {
+  findAncestorFolder,
+  readDefinition,
+  readDefinitions,
+  formatDefinitions
+} from "../vault-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const toolRoot = path.dirname(__filename);
@@ -20,33 +26,31 @@ if (!filePath) {
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 
+const pocRoot = findAncestorFolder(filePath, "POC");
+const relevanceDefinition = readDefinition(
+  pocRoot,
+  "Metrics",
+  "Relevance"
+);
+
+const threadNames = parsed.data.threads ?? [];
+
+const threadDefinitions = formatDefinitions(
+  readDefinitions(
+    pocRoot,
+    "Plot Threads",
+    threadNames
+  )
+);
+
 const prompt = `
 Return JSON only.
 
-Evaluate narrative plot thread relevance on a scale from 1 to 10.
+Use this Relevance Rubric:
+${relevanceDefinition}
 
-Score:
-Evaluate each plot thread listed in frontmatter.
-
-Score 1 - 10:
-
-Scene relevance:
-1 = removable; no meaningful story movement
-3 = minor support, setup, atmosphere, or reminder
-5 = meaningful development of at least one active thread
-7 = strong advancement, complication, or new information
-9 = major turn, reveal, reversal, or point of no return
-10 = structural/pivotal scene; story cannot remain the same after it
-
-Thread Relevance:
-1 = thread barely present
-5 = thread meaningfully advanced
-10 = major revelation, reversal, crisis, or resolution
-
-Only score plot threads listed in frontmatter.
-
-Frontmatter plot threads:
-${JSON.stringify(parsed.data.threads ?? [], null, 2)}
+Use these Plot thread definitions:
+${threadDefinitions}
 
 Scene:
 

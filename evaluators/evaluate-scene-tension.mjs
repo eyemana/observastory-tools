@@ -3,6 +3,12 @@ import path from "path";
 import matter from "gray-matter";
 
 import { fileURLToPath } from "url";
+import {
+  findAncestorFolder,
+  readDefinition,
+  readDefinitions,
+  formatDefinitions
+} from "../vault-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const toolRoot = path.dirname(__filename);
@@ -20,31 +26,31 @@ if (!filePath) {
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 
+const pocRoot = findAncestorFolder(filePath, "POC");
+
+const tensionDefinition = readDefinition(
+  pocRoot,
+  "Metrics",
+  "Tension"
+);
+
+const characterNames = parsed.data.characterNames ?? [];
+
+const characterDefinitions = formatDefinitions(
+  readDefinitions(
+    pocRoot,
+    "characters",
+    characterNames
+  )
+);
 const prompt = `
 Return JSON only.
 
-Evaluate narrative tension on a scale from 1 to 10.
+Use these character definitions
+${characterDefinitions}
 
-Score:
-1. Overall scene tension.
-2. Character-specific narrative tension for each character listed in frontmatter.
-
-For overal scene tension, the POV tension value carries the most weight.
-Characters may be present, absent, referenced, remembered, feared, desired, or influencing the scene indirectly.
-Tension scores are from each character's perspective.  A character may be in danger and not know it even though the reader does, or another character does, in which case the endangered character's tension would be low.
-
-1 - 2: low/no narrative pressure
-3 - 4: mild concern, setup, routine uncertainty
-5 - 6: active conflict or meaningful complication
-7 - 8: serious stakes, hidden danger, reversal, exposure risk
-9 - 10: immediate crisis, irreversible consequence, major reveal, confrontation
-
-Use the full 1–10 range when appropriate.
-Do not default to 7.
-A quiet administrative scene should usually score below 5 unless it contains strong hidden threat.
-
-Frontmatter characters:
-${JSON.stringify(parsed.data.characters ?? [], null, 2)}
+Use this definition of Tension:
+${tensionDefinition}
 
 Scene:
 
