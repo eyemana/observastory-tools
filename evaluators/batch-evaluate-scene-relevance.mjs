@@ -10,7 +10,7 @@ const scenesFolder = process.argv[2];
 console.log(`Checking directory: ${scenesFolder}`);
 
 if (!scenesFolder) {
-  console.error("Usage: node batch-evaluate-scenes.mjs <scenes-folder>");
+  console.error("Usage: node batch-evaluate-scene-relevance.mjs <scenes-folder>");
   process.exit(1);
 }
 
@@ -28,7 +28,7 @@ for (const filePath of markdownFiles) {
     const output = execFileSync(
       "node",
       [
-        path.join(toolRoot, "evaluate-scene-tension.mjs"),
+        path.join(toolRoot, "evaluate-scene-relevance.mjs"),
         filePath
       ],
       { encoding: "utf8" }
