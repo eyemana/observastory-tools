@@ -34,17 +34,27 @@ const tensionDefinition = readDefinition(
   "Tension"
 );
 
-const characterNames = parsed.data.characterNames ?? [];
+const characterNames = parsed.data.characters ?? [];
 
 const characterDefinitions = formatDefinitions(
   readDefinitions(
     pocRoot,
-    "characters",
+    "Characters",
     characterNames
   )
 );
+
 const prompt = `
 Return JSON only.
+Characters to score:
+${JSON.stringify(parsed.data.characters ?? [], null, 2)}
+
+Use EXACTLY these character names as JSON keys.
+Do not shorten names.
+Do not use first names.
+Do not add characters not listed here.
+
+The rationale-related JSON elements are to be supplied by you as a single entence supporting the associated score value you gave.
 
 Use these character definitions
 ${characterDefinitions}
@@ -59,8 +69,12 @@ ${parsed.content}
 Required JSON:
 {
   "scene": number,
+  "sceneRationale": string,
   "characters": {
-    "CharacterName": number
+    "characterName": {
+      "score": number,
+      "rationale": string
+    }
   }
 }
 `;
@@ -79,7 +93,39 @@ const response = await fetch(config.ollamaUrl, {
 });
 
 const result = await response.json();
+
 const scores = JSON.parse(result.response);
+
+const normalizedCharacters = {};
+
+for (const characterName of characterNames) {
+  const rawValue = scores.characters?.[characterName];
+
+  let score;
+  let rationale = "";
+
+  if (typeof rawValue === "number") {
+    score = rawValue;
+  } else if (
+    rawValue &&
+    typeof rawValue === "object" &&
+    typeof rawValue.score === "number"
+  ) {
+    score = rawValue.score;
+    rationale = typeof rawValue.rationale === "string"
+      ? rawValue.rationale
+      : "";
+  } else {
+    throw new Error(
+      `Missing or invalid score for character "${characterName}": ${result.response}`
+    );
+  }
+
+  normalizedCharacters[characterName] = {
+    score,
+    rationale
+  };
+}
 
 if (typeof scores.scene !== "number") {
   throw new Error(`Invalid scene score: ${result.response}`);
@@ -94,7 +140,8 @@ parsed.data.ai.model = config.model;
 
 parsed.data.ai.tension = {
   scene: scores.scene,
-  characters: scores.characters,
+  sceneRationale: scores.sceneRationale,
+  characters: normalizedCharacters,
   updated: new Date().toISOString()
 };
 

@@ -44,7 +44,8 @@ const threadDefinitions = formatDefinitions(
 );
 
 const prompt = `
-Return JSON only.
+Return JSON only.  When creating keys for kvp, always use values from frontmatter, if possible.
+The rationale-related JSON elements are to be supplied by you as a sentence supporting the associated score value you gave.
 
 Use this Relevance Rubric:
 ${relevanceDefinition}
@@ -59,8 +60,12 @@ ${parsed.content}
 Required JSON:
 {
   "scene": number,
+  "sceneRationale": string,
   "threads": {
-    "Thread Name": number
+    "threadName": {
+      "score": number,
+      "rationale": string
+    }
   }
 }
 `;
@@ -85,6 +90,10 @@ if (typeof scores.scene !== "number") {
   throw new Error(`Invalid scene score: ${result.response}`);
 }
 
+if (typeof scores.sceneRationale !== "string") {
+  throw new Error(`Invalid scene rationale: ${result.response}`);
+}
+
 if (!scores.threads || typeof scores.threads !== "object") {
   throw new Error(`Invalid relevance scores: ${result.response}`);
 }
@@ -93,6 +102,7 @@ parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 parsed.data.ai.relevance = {
   scene: scores.scene,
+  sceneRationale: scores.sceneRationale,
   threads: scores.threads,
   updated: new Date().toISOString()
 };
