@@ -61,6 +61,50 @@ function normalizeScoreMap(scores, expectedNames, label, rawResponse) {
   return normalized;
 }
 
+function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawResponse) {
+  if (!bucket || typeof bucket !== "object") {
+    throw new Error(`Invalid ${label} bucket: ${rawResponse}`);
+  }
+
+  if (typeof bucket.scene !== "number") {
+    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
+  }
+
+  if (typeof bucket.sceneRationale !== "string") {
+    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
+  }
+
+  const normalized = {
+    scene: bucket.scene,
+    sceneRationale: bucket.sceneRationale,
+    items: {}
+  };
+
+  for (const name of expectedNames) {
+    const rawValue = bucket[name];
+
+    if (
+      rawValue &&
+      typeof rawValue === "object" &&
+      typeof rawValue.scene === "number"
+    ) {
+      normalized.items[name] = {
+        scene: rawValue.scene,
+        sceneRationale:
+          typeof rawValue.sceneRationale === "string"
+            ? rawValue.sceneRationale
+            : ""
+      };
+    } else {
+      normalized.items[name] = {
+        scene: 0,
+        sceneRationale: `${label} was listed for evaluation, but the model did not return a scene score.`
+      };
+    }
+  }
+
+  return normalized;
+}
 
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
@@ -156,30 +200,36 @@ ${parsed.content}
 
 Required JSON:
 {
-  "scene": number,
-  "sceneRationale": string,
   "characters": {
+    "scene": number,
+    "sceneRationale": string,
     "characterName": {
-      "score": number,
-      "rationale": string
+      "scene": number,
+      "sceneRationale": string
     }
   },
   "plotThreads": {
+    "scene": number,
+    "sceneRationale": string,
     "plotThreadName": {
-      "score": number,
-      "rationale": string
+      "scene": number,
+      "sceneRationale": string
     }
   },
   "storyEngines": {
+    "scene": number,
+    "sceneRationale": string,
     "storyEngineName": {
-      "score": number,
-      "rationale": string
+      "scene": number,
+      "sceneRationale": string
     }
   },
   "arcs": {
+    "scene": number,
+    "sceneRationale": string,
     "arcName": {
-      "score": number,
-      "rationale": string
+      "scene": number,
+      "sceneRationale": string
     }
   }
 }
@@ -202,84 +252,78 @@ const result = await response.json();
 
 const scores = JSON.parse(result.response);
 
-if (typeof scores.scene !== "number") {
-  throw new Error(`Invalid scene ${metricKey} score: ${result.response}`);
-}
-
-if (typeof scores.sceneRationale !== "string") {
-  throw new Error(`Invalid scene ${metricKey} rationale: ${result.response}`);
-}
-
-
 if (!scores.arcs || typeof scores.arcs !== "object") {
   throw new Error(`Invalid arc ${metricKey} scores: ${result.response}`);
 }
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 
-const characterScores = normalizeScoreMap(
+const characterScores = normalizeSubjectRelationshipScoreMap(
   scores.characters,
   characterNames,
   "character",
   result.response
 );
 
-const plotThreadScores = normalizeScoreMap(
-  scores.plotThreads ?? {},
+const plotThreadScores = normalizeSubjectRelationshipScoreMap(
+  scores.plotThreads,
   plotThreadNames,
   "plot thread",
   result.response
 );
 
-const storyEngineScores = normalizeScoreMap(
-  scores.storyEngines ?? {},
+const storyEngineScores = normalizeSubjectRelationshipScoreMap(
+  scores.storyEngines,
   storyEngineNames,
   "story engine",
   result.response
 );
 
-const arcScores = normalizeScoreMap(
-  scores.arcs ?? {},
+const arcScores = normalizeSubjectRelationshipScoreMap(
+  scores.arcs,
   arcNames,
   "arc",
   result.response
 );
 
+parsed.data.ai = parsed.data.ai ?? {};
+parsed.data.ai.model = config.model;
 parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
 
-parsed.data.ai[metricKey].scene = scores.scene;
-parsed.data.ai[metricKey].sceneRationale = scores.sceneRationale;
+parsed.data.ai[metricKey].characters = {
+  scene: characterScores.scene,
+  sceneRationale: characterScores.sceneRationale
+};
 
-parsed.data.ai[metricKey].characters = {};
-for (const [name, value] of Object.entries(characterScores)) {
-  parsed.data.ai[metricKey].characters[name] = {
-    scene: value.score,
-    sceneRationale: value.rationale
-  };
+for (const [name, value] of Object.entries(characterScores.items)) {
+  parsed.data.ai[metricKey].characters[name] = value;
 }
 
-parsed.data.ai[metricKey].plotThreads = {};
-for (const [name, value] of Object.entries(plotThreadScores)) {
-  parsed.data.ai[metricKey].plotThreads[name] = {
-    scene: value.score,
-    sceneRationale: value.rationale
-  };
+parsed.data.ai[metricKey].plotThreads = {
+  scene: plotThreadScores.scene,
+  sceneRationale: plotThreadScores.sceneRationale
+};
+
+for (const [name, value] of Object.entries(plotThreadScores.items)) {
+  parsed.data.ai[metricKey].plotThreads[name] = value;
 }
 
-parsed.data.ai[metricKey].storyEngines = {};
-for (const [name, value] of Object.entries(storyEngineScores)) {
-  parsed.data.ai[metricKey].storyEngines[name] = {
-    scene: value.score,
-    sceneRationale: value.rationale
-  };
+parsed.data.ai[metricKey].storyEngines = {
+  scene: storyEngineScores.scene,
+  sceneRationale: storyEngineScores.sceneRationale
+};
+
+for (const [name, value] of Object.entries(storyEngineScores.items)) {
+  parsed.data.ai[metricKey].storyEngines[name] = value;
 }
 
-parsed.data.ai[metricKey].arcs = {};
-for (const [name, value] of Object.entries(arcScores)) {
-  parsed.data.ai[metricKey].arcs[name] = {
-    scene: value.score,
-    sceneRationale: value.rationale
-  };
+parsed.data.ai[metricKey].arcs = {
+  scene: arcScores.scene,
+  sceneRationale: arcScores.sceneRationale
+};
+
+for (const [name, value] of Object.entries(arcScores.items)) {
+  parsed.data.ai[metricKey].arcs[name] = value;
 }
 
 parsed.data.ai[metricKey].updated = new Date().toISOString();
