@@ -217,35 +217,72 @@ if (!scores.arcs || typeof scores.arcs !== "object") {
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 
-parsed.data.ai[metricKey] = {
-  scene: scores.scene,
-  sceneRationale: scores.sceneRationale,
-  characters: normalizeScoreMap(
-    scores.characters,
-    characterNames,
-    "character",
-    result.response
-  ),
-  plotThreads: normalizeScoreMap(
-    scores.plotThreads ?? {},
-    plotThreadNames,
-    "plot thread",
-    result.response
-  ),
-  storyEngines: normalizeScoreMap(
-    scores.storyEngines ?? {},
-    storyEngineNames,
-    "story engine",
-    result.response
-  ),
-  arcs: normalizeScoreMap(
-    scores.arcs ?? {},
-    arcNames,
-    "arc",
-    result.response
-  ),
-  updated: new Date().toISOString()
-};
+const characterScores = normalizeScoreMap(
+  scores.characters,
+  characterNames,
+  "character",
+  result.response
+);
+
+const plotThreadScores = normalizeScoreMap(
+  scores.plotThreads ?? {},
+  plotThreadNames,
+  "plot thread",
+  result.response
+);
+
+const storyEngineScores = normalizeScoreMap(
+  scores.storyEngines ?? {},
+  storyEngineNames,
+  "story engine",
+  result.response
+);
+
+const arcScores = normalizeScoreMap(
+  scores.arcs ?? {},
+  arcNames,
+  "arc",
+  result.response
+);
+
+parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
+
+parsed.data.ai[metricKey].scene = scores.scene;
+parsed.data.ai[metricKey].sceneRationale = scores.sceneRationale;
+
+parsed.data.ai[metricKey].characters = {};
+for (const [name, value] of Object.entries(characterScores)) {
+  parsed.data.ai[metricKey].characters[name] = {
+    scene: value.score,
+    sceneRationale: value.rationale
+  };
+}
+
+parsed.data.ai[metricKey].plotThreads = {};
+for (const [name, value] of Object.entries(plotThreadScores)) {
+  parsed.data.ai[metricKey].plotThreads[name] = {
+    scene: value.score,
+    sceneRationale: value.rationale
+  };
+}
+
+parsed.data.ai[metricKey].storyEngines = {};
+for (const [name, value] of Object.entries(storyEngineScores)) {
+  parsed.data.ai[metricKey].storyEngines[name] = {
+    scene: value.score,
+    sceneRationale: value.rationale
+  };
+}
+
+parsed.data.ai[metricKey].arcs = {};
+for (const [name, value] of Object.entries(arcScores)) {
+  parsed.data.ai[metricKey].arcs[name] = {
+    scene: value.score,
+    sceneRationale: value.rationale
+  };
+}
+
+parsed.data.ai[metricKey].updated = new Date().toISOString();
 
 const updated = matter.stringify(parsed.content, parsed.data);
 fs.writeFileSync(filePath, updated, "utf8");
