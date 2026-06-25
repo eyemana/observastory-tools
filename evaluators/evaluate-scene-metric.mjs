@@ -114,6 +114,11 @@ const arcDefinitions = formatDefinitions(
 
 const prompt = `
 Return JSON only.
+Return compact valid JSON.
+Do not include trailing commas.
+Every opened object must be closed.
+Do not include markdown.
+
 Characters to score:
 ${JSON.stringify(characterNames, null, 2)}
 
@@ -199,7 +204,10 @@ const response = await fetch(config.ollamaUrl, {
     model: config.model,
     format: "json",
     prompt,
-    stream: false
+    stream: false,
+    options: {
+      temperature: 0
+    }
   })
 });
 

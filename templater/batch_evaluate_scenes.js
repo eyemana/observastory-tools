@@ -26,21 +26,32 @@ module.exports = async (tp) => {
     return "";
   }
 
-  const metrics = ["Tension", "Relevance", "Resolution"];
+  const basePath = app.vault.adapter.getBasePath();
+
+  const evaluators = [
+    {
+      name: "Tension",
+      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-tension.sh")
+    },
+    {
+      name: "Relevance",
+      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-relevance.sh")
+    },
+    {
+      name: "Resolution",
+      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-resolution.sh")
+    },
+    {
+      name: "Resolution",
+      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-character-awareness.sh")
+    }
+
+  ];
 
   const files = app.vault
     .getMarkdownFiles()
     .filter(file => file.parent?.path === folderPath)
     .sort((a, b) => a.name.localeCompare(b.name));
-
-  const basePath = app.vault.adapter.getBasePath();
-
-  const evaluatorPath = path.join(
-    basePath,
-    "obsidianTools",
-    "evaluators",
-    "evaluate-scene-metric.mjs"
-  );
 
   let success = 0;
   let failed = 0;
@@ -48,32 +59,30 @@ module.exports = async (tp) => {
   for (const file of files) {
     const absoluteFilePath = path.join(basePath, file.path);
 
-    for (const metric of metrics) {
+    for (const evaluator of evaluators) {
       try {
-        new Notice(`Evaluating ${file.name}: ${metric}`);
+        new Notice(`Evaluating ${file.name}: ${evaluator.name}`);
 
         execFileSync(
-          "node",
-          [evaluatorPath, absoluteFilePath, metric],
+          evaluator.script,
+          [absoluteFilePath],
           {
             encoding: "utf8",
-            cwd: path.join(basePath, "obsidianTools")
+            cwd: basePath
           }
         );
 
         success++;
       } catch (error) {
         failed++;
-        console.error(`Failed: ${file.path} / ${metric}`);
+        console.error(`Failed: ${file.path} / ${evaluator.name}`);
         console.error(error.stdout?.toString() || "");
         console.error(error.stderr?.toString() || error.message);
       }
     }
   }
 
-  new Notice(
-    `Batch complete. ${success} succeeded, ${failed} failed.`
-  );
+  new Notice(`Batch complete. ${success} succeeded, ${failed} failed.`);
 
   return "";
 };
