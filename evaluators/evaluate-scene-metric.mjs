@@ -61,51 +61,6 @@ function normalizeScoreMap(scores, expectedNames, label, rawResponse) {
   return normalized;
 }
 
-function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawResponse) {
-  if (!bucket || typeof bucket !== "object") {
-    throw new Error(`Invalid ${label} bucket: ${rawResponse}`);
-  }
-
-  if (typeof bucket.scene !== "number") {
-    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
-  }
-
-  if (typeof bucket.sceneRationale !== "string") {
-    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
-  }
-
-  const normalized = {
-    scene: bucket.scene,
-    sceneRationale: bucket.sceneRationale,
-    items: {}
-  };
-
-  for (const name of expectedNames) {
-    const rawValue = bucket[name];
-
-    if (
-      rawValue &&
-      typeof rawValue === "object" &&
-      typeof rawValue.scene === "number"
-    ) {
-      normalized.items[name] = {
-        scene: rawValue.scene,
-        sceneRationale:
-          typeof rawValue.sceneRationale === "string"
-            ? rawValue.sceneRationale
-            : ""
-      };
-    } else {
-      normalized.items[name] = {
-        scene: 0,
-        sceneRationale: `${label} was listed for evaluation, but the model did not return a scene score.`
-      };
-    }
-  }
-
-  return normalized;
-}
-
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 
@@ -177,7 +132,7 @@ Do not omit any listed item.
 Do not add unlisted items.
 If an item is barely present, still include it with a low score and rationale.
 
-The rationale-related JSON elements are to be supplied by you as a single entence supporting the associated score value you gave.
+The rationale-related JSON elements are to be supplied by you as a single sentence supporting the associated score value you gave.
 
 Use these character definitions
 ${characterDefinitions}
@@ -249,14 +204,63 @@ const response = await fetch(config.ollamaUrl, {
 });
 
 const result = await response.json();
-
 const scores = JSON.parse(result.response);
 
-if (!scores.arcs || typeof scores.arcs !== "object") {
-  throw new Error(`Invalid arc ${metricKey} scores: ${result.response}`);
-}
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
+
+function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawResponse) {
+  if (expectedNames.length === 0) {
+    return {
+      scene: 0,
+      sceneRationale: `No ${label}s listed for this scene.`,
+      items: {}
+    };
+  }
+
+  if (!bucket || typeof bucket !== "object") {
+    throw new Error(`Invalid ${label} bucket: ${rawResponse}`);
+  }
+
+  if (typeof bucket.scene !== "number") {
+    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
+  }
+
+  if (typeof bucket.sceneRationale !== "string") {
+    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
+  }
+
+  const normalized = {
+    scene: bucket.scene,
+    sceneRationale: bucket.sceneRationale,
+    items: {}
+  };
+
+  for (const name of expectedNames) {
+    const rawValue = bucket[name];
+
+    if (
+      rawValue &&
+      typeof rawValue === "object" &&
+      typeof rawValue.scene === "number"
+    ) {
+      normalized.items[name] = {
+        scene: rawValue.scene,
+        sceneRationale:
+          typeof rawValue.sceneRationale === "string"
+            ? rawValue.sceneRationale
+            : ""
+      };
+    } else {
+      normalized.items[name] = {
+        scene: 0,
+        sceneRationale: `${label} was listed for evaluation, but the model did not return a scene score.`
+      };
+    }
+  }
+
+  return normalized;
+}
 
 const characterScores = normalizeSubjectRelationshipScoreMap(
   scores.characters,
