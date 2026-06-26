@@ -56,6 +56,7 @@ function writeJsonAtomic(filePath, value) {
 export function enqueueEvaluateScenesJob({
   toolRoot,
   scenesFolder,
+  sceneFiles,
   vaultRoot,
   source = "manual",
   evaluations,
@@ -85,6 +86,9 @@ export function enqueueEvaluateScenesJob({
     updatedAt: now,
     source,
     scenesFolder: path.resolve(scenesFolder),
+    sceneFiles: Array.isArray(sceneFiles)
+      ? sceneFiles.map((filePath) => path.resolve(filePath))
+      : undefined,
     vaultRoot: vaultRoot ? path.resolve(vaultRoot) : undefined,
     evaluations: normalizedEvaluations
   };

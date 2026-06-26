@@ -176,6 +176,18 @@ function listSceneFiles(scenesFolder) {
     .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 }
 
+function getJobSceneFiles(job) {
+  if (Array.isArray(job.sceneFiles) && job.sceneFiles.length > 0) {
+    return job.sceneFiles
+      .filter((filePath) => typeof filePath === "string")
+      .map((filePath) => path.resolve(filePath))
+      .filter((filePath) => filePath.endsWith(".md"))
+      .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+  }
+
+  return listSceneFiles(job.scenesFolder);
+}
+
 async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   const logPath = path.join(paths.logsDir, `${job.id}.log`);
   const throttleMs = Math.max(0, Number(schedulerConfig.throttleMs) || 0);
@@ -185,7 +197,7 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
     throw new Error(`Job ${job.id} does not contain any evaluations.`);
   }
 
-  const sceneFiles = listSceneFiles(job.scenesFolder);
+  const sceneFiles = getJobSceneFiles(job);
   const total = sceneFiles.length * evaluations.length;
   let success = 0;
   let failed = 0;
@@ -193,6 +205,9 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
 
   logLine(logPath, `Starting job ${job.id}`);
   logLine(logPath, `Scenes folder: ${job.scenesFolder}`);
+  if (job.sceneFiles?.length) {
+    logLine(logPath, `Explicit scene files: ${job.sceneFiles.length}`);
+  }
   logLine(logPath, `Found ${sceneFiles.length} scene files.`);
   logLine(logPath, `Planned evaluator calls: ${total}`);
   logLine(logPath, `Throttle: ${throttleMs}ms`);

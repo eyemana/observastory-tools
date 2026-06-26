@@ -9,27 +9,35 @@ The evaluators work on **scenes**. Storyboard can group scenes into chapters for
 From Obsidian, use these Templater templates:
 
 - `Templates/Batch-Evaluate-Scenes.md`: queue the full scene evaluation batch.
+- `Templates/Analyze-Current-Scene.md`: queue the full configured analysis for only the active scene.
 - `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Start-Scheduler.md`: start a background scheduler worker.
+- `Templates/Stop-Scheduler.md`: stop the background scheduler worker.
 - `Templates/Cancel-Batch-Evaluation.md`: cancel the latest queued or running job.
 
 From a terminal in `obsidianTools`:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
 node scheduler/worker.mjs --drain
 ```
 
 To enqueue only Reader Awareness:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
+node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
+```
+
+To enqueue the full configured analysis for one scene:
+
+```sh
+node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
 ```
 
 To process one scene directly:
 
 ```sh
-node evaluators/evaluate-scene.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
+node evaluators/evaluate-scene.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
 ```
 
 ## Scene Frontmatter
@@ -40,7 +48,6 @@ Scene notes are the canonical evaluated units. The evaluator expects scene front
 ---
 name: Inventory Day
 type: Scene
-chapter: 1
 chapter_order: 1
 scene_order: 1
 pov: Mara Bell
@@ -57,9 +64,9 @@ arcs:
 
 `chapter_order` and `scene_order` are writer-authored structure fields. They are not AI-generated and do not belong under `ai`.
 
-- `chapter_order`: the chapter's position in the book/story.
+- `chapter_order`: the chapter's position in the book/story, and the field Storyboard uses to group scenes into chapter blocks.
 - `scene_order`: the scene's position inside that chapter.
-- `chapter`: the chapter label or number used for grouping scenes.
+- `chapter`: optional label/title metadata if you want it later; Storyboard does not require it for grouping.
 
 Storyboard writes `chapter_order` and `scene_order` when you rearrange tiles and click `Save Order`.
 
@@ -85,7 +92,7 @@ Character checkboxes filter the visible scenes. The checkbox colors match the St
 
 ### Scene Tiles
 
-Scene tiles are compact color blocks. Their width is based on scene word count. The color is based on POV.
+Scene tiles are compact color blocks. Their width is based on scene word count. The color is based on POV. Tile faces stay visual; text and metrics belong in hover cards and the detail pane.
 
 Scene tiles show their order badge as:
 
@@ -93,23 +100,23 @@ Scene tiles show their order badge as:
 chapter_order.scene_order
 ```
 
-Hovering, focusing, or selecting a scene reveals the tile's text and summary data. Hover also shows a larger card with Reader Awareness deltas, cumulative totals, and rationales.
+Hovering or focusing a scene shows a larger card with Reader Awareness deltas, cumulative totals, and rationales.
 
 Click a scene to open the scene detail pane. Double-click a scene to open the note.
 
 ### Chapter Blocks
 
-Chapter mode groups scene notes by their `chapter` field.
+Chapter mode groups scene notes by `chapter_order`.
 
 Chapter order is controlled by `chapter_order`. Scene order inside a chapter is controlled by `scene_order`.
 
-Chapter blocks show:
+Chapter blocks are made of nested scene rectangles and show:
 
 - a chapter order badge, such as `C1`
 - nested mini scene rectangles in chapter order
 - scene-order numbers inside those rectangles
 
-Hover a chapter to see its scene list. Click a chapter to open the chapter detail pane. Click a mini scene rectangle to switch the detail pane to that scene.
+Hover a chapter to see its scene list. Hover a mini scene rectangle to see scene data. Click a chapter to open the chapter detail pane. Click a mini scene rectangle to switch the detail pane to that scene.
 
 ### Saving Order
 
@@ -216,6 +223,12 @@ Start the background worker from Obsidian with `Templates/Start-Scheduler.md`, o
 node scheduler/worker.mjs --watch
 ```
 
+Stop the background worker from Obsidian with `Templates/Stop-Scheduler.md`, or from a terminal:
+
+```sh
+node scheduler/stop-worker.mjs
+```
+
 Run one manual drain from a terminal:
 
 ```sh
@@ -231,6 +244,8 @@ node scheduler/cancel-job.mjs --latest
 ## Batch Scene Evaluation
 
 Use `Templates/Batch-Evaluate-Scenes.md` from any scene in the folder you want to process.
+
+Use `Templates/Analyze-Current-Scene.md` when you want the full configured evaluator set for just the active scene.
 
 By default, the Templater script:
 
