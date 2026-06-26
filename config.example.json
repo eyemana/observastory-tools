@@ -1,4 +1,27 @@
 {
-	  "ollamaUrl": "http://localhost:11434/api/generate",
-	    "model": "qwen2.5:7b"
+  "ollamaUrl": "http://localhost:11434/api/generate",
+  "model": "qwen2.5:7b",
+  "scheduler": {
+    "mode": "manual",
+    "queueDir": ".queue",
+    "throttleMs": 5000,
+    "pollIntervalMs": 30000,
+    "launchWorkerFromTemplater": true,
+    "nodePath": "node",
+    "evaluations": [
+      ["Relevance", "Character"],
+      ["Relevance", "Plot Thread"],
+      ["Relevance", "Story Engine"],
+      ["Relevance", "Arc"],
+      ["Tension", "Character"],
+      ["Tension", "Plot Thread"],
+      ["Tension", "Story Engine"],
+      ["Tension", "Arc"],
+      ["Resolution", "Character"],
+      ["Resolution", "Plot Thread"],
+      ["Resolution", "Story Engine"],
+      ["Resolution", "Arc"],
+      ["Character Awareness", "Plot Thread"]
+    ]
+  }
 }

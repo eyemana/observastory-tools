@@ -1,42 +1,66 @@
-To batch process scenes, for example: 
+# Obsidian Tools
 
-'''
-    node .\evaluators\batch-evaluate-scenes.mjs "C:\\obsidian\\POC\\Scenes" 
-'''
+## Batch scene evaluation from Templater
+
+Use `Templates/Batch-Evaluate-Scenes.md` from any scene in the folder you want to process.
+
+By default, the Templater script:
+
+1. creates a queued batch job under `obsidianTools/.queue/jobs`
+2. starts the scheduler worker in `--drain` mode
+3. returns control to Obsidian while the worker processes scenes in the background
+
+The worker writes job logs to `obsidianTools/.queue/logs`.
+
+## Scheduler modes
+
+Scheduler behavior is controlled in `config.local.json`:
+
+```json
+{
+  "scheduler": {
+    "mode": "manual",
+    "throttleMs": 5000,
+    "pollIntervalMs": 30000,
+    "launchWorkerFromTemplater": true
+  }
+}
+```
+
+`manual` mode is the default. Templater queues the batch and starts a worker that drains all queued jobs, using `throttleMs` between evaluator calls.
+
+`background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
+
+Start the background worker from Obsidian with `Templates/Start-Scheduler.md`, or from a terminal:
+
+```sh
+node scheduler/worker.mjs --watch
+```
+
+Run one manual drain from a terminal:
+
+```sh
+node scheduler/worker.mjs --drain
+```
+
+## Command-line batch evaluation
+
+To enqueue a batch job:
+
+```sh
+node scheduler/enqueue-batch.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+```
+
+To run the older direct batch path without queueing:
+
+```sh
+node evaluators/batch-evaluate-scenes.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+```
 
 To process an individual scene:
 
-'''
-    node .\evaluators\evaluate-scene-tension.mjs "c:\\obsidian\\POC\\Scenes\\01 Inventory Day.md"
-'''
+```sh
+node evaluators/evaluate-scene.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
+```
 
-These require metadata, or frontmatter, including characters.  See the following example.
-
-NOTE: the "ai" section of json below will be created in the scene frontmatter when these scripts are run.
-
----
-name: Inventory Day
-type: Scene
-chapter: 1
-pov: Mara Bell
-characters:
-  - Mara Bell
-  - Theo Vale
-  - Evelyn Pike
-threads:
-  - Missing Ledger
-story_engines:
-  - The Founders Secret
-timeline_order: 1
-reader_knowledge: None
-tension: 6
-ai:
-  model: 'qwen2.5:7b'
-  tension:
-    scene: 7
-    updated: '2026-06-15T19:51:49.020Z'
-    characters:
-      Mara Bell: 8
-      Theo Vale: 2
-      Evelyn Pike: 3
----
+These scripts expect scene frontmatter to include the relevant lists, such as `characters`, `plotThreads`, `storyEngines`, and `arcs`. The `ai` section is created or updated by the evaluator.

@@ -1,6 +1,31 @@
 module.exports = async (tp) => {
-  const { execFileSync } = require("child_process");
+  const { execFileSync, spawn } = require("child_process");
+  const fs = require("fs");
   const path = require("path");
+
+  function loadConfig(toolsRoot) {
+    const defaults = {
+      scheduler: {
+        mode: "manual",
+        launchWorkerFromTemplater: true,
+        nodePath: "node"
+      }
+    };
+    const localPath = path.join(toolsRoot, "config.local.json");
+    const examplePath = path.join(toolsRoot, "config.example.json");
+    const configPath = fs.existsSync(localPath) ? localPath : examplePath;
+
+    if (!fs.existsSync(configPath)) {
+      return defaults;
+    }
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    config.scheduler = {
+      ...defaults.scheduler,
+      ...(config.scheduler ?? {})
+    };
+    return config;
+  }
 
   const activeFile = app.workspace.getActiveFile();
 
@@ -16,8 +41,13 @@ module.exports = async (tp) => {
     return "";
   }
 
+  const files = app.vault
+    .getMarkdownFiles()
+    .filter(file => file.parent?.path === folderPath)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const confirmed = await tp.system.suggester(
-    [`Evaluate all scenes in ${folderPath}`, "Cancel"],
+    [`Queue evaluation for ${files.length} scenes in ${folderPath}`, "Cancel"],
     ["yes", "no"]
   );
 
@@ -27,62 +57,64 @@ module.exports = async (tp) => {
   }
 
   const basePath = app.vault.adapter.getBasePath();
+  const toolsRoot = path.join(basePath, "obsidianTools");
+  const config = loadConfig(toolsRoot);
+  const scheduler = config.scheduler ?? {};
+  const nodePath = scheduler.nodePath || "node";
+  const absoluteFolderPath = path.join(basePath, folderPath);
+  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-batch.mjs");
+  const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
-  const evaluators = [
-    {
-      name: "Tension",
-      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-tension.sh")
-    },
-    {
-      name: "Relevance",
-      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-relevance.sh")
-    },
-    {
-      name: "Resolution",
-      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-resolution.sh")
-    },
-    {
-      name: "Character Awareness",
-      script: path.join(basePath, "obsidianTools", "scripts", "evaluate-scene-character-awareness.sh")
-    }
-
-  ];
-
-  const files = app.vault
-    .getMarkdownFiles()
-    .filter(file => file.parent?.path === folderPath)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  let success = 0;
-  let failed = 0;
-
-  for (const file of files) {
-    const absoluteFilePath = path.join(basePath, file.path);
-
-    for (const evaluator of evaluators) {
-      try {
-        new Notice(`Evaluating ${file.name}: ${evaluator.name}`);
-
-        execFileSync(
-          evaluator.script,
-          [absoluteFilePath],
-          {
-            encoding: "utf8",
-            cwd: basePath
-          }
-        );
-
-        success++;
-      } catch (error) {
-        failed++;
-        console.error(`Failed: ${file.path} / ${evaluator.name}`);
-        console.error(error.stdout?.toString() || "");
-        console.error(error.stderr?.toString() || error.message);
+  try {
+    const rawOutput = execFileSync(
+      nodePath,
+      [
+        enqueueScript,
+        absoluteFolderPath,
+        "--vault-root",
+        basePath,
+        "--source",
+        "templater"
+      ],
+      {
+        encoding: "utf8",
+        cwd: toolsRoot,
+        windowsHide: true
       }
-    }
-  }
+    );
 
-  new Notice(`Batch complete. ${success} succeeded, ${failed} failed.`);
+    const outputLine = rawOutput.trim().split(/\r?\n/).filter(Boolean).pop();
+    const result = JSON.parse(outputLine);
+
+    const shouldLaunchWorker =
+      scheduler.mode !== "background" &&
+      scheduler.launchWorkerFromTemplater !== false;
+
+    if (shouldLaunchWorker) {
+      const child = spawn(
+        nodePath,
+        [
+          workerScript,
+          "--drain"
+        ],
+        {
+          cwd: toolsRoot,
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true
+        }
+      );
+
+      child.unref();
+      new Notice(`Queued batch ${result.jobId}. Scheduler started.`);
+    } else {
+      new Notice(`Queued batch ${result.jobId}. Background scheduler will pick it up.`);
+    }
+  } catch (error) {
+    new Notice("Failed to queue batch evaluation. See developer console.");
+    console.error(error.stdout?.toString() || "");
+    console.error(error.stderr?.toString() || error.message);
+  }
 
   return "";
 };

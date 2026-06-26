@@ -3,8 +3,12 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 
+import { loadConfig } from "../tool-config.mjs";
+
 const __filename = fileURLToPath(import.meta.url);
-const toolRoot = path.dirname(__filename);
+const evaluatorRoot = path.dirname(__filename);
+const toolRoot = path.join(evaluatorRoot, "..");
+const config = loadConfig(toolRoot);
 
 const scenesFolder = process.argv[2];
 
@@ -13,31 +17,8 @@ if (!scenesFolder) {
   process.exit(1);
 }
 
-const evaluations = [
-  ["Relevance", "Character"],
-  ["Relevance", "Plot Thread"],
-  ["Relevance", "Story Engine"],
-  ["Relevance", "Arc"],
-
-  ["Tension", "Character"],
-  ["Tension", "Plot Thread"],
-  ["Tension", "Story Engine"],
-  ["Tension", "Arc"],
-
-  ["Resolution", "Character"],
-  ["Resolution", "Plot Thread"],
-  ["Resolution", "Story Engine"],
-  ["Resolution", "Arc"],
-
-  ["Character Awareness", "Plot Thread"]
-];
-
-const evaluatorScript = path.join(
-  toolRoot,
-  "..",
-  "scripts",
-  "evaluate-scene.sh"
-);
+const evaluations = config.scheduler.evaluations;
+const evaluatorScript = path.join(evaluatorRoot, "evaluate-scene.mjs");
 
 const markdownFiles = fs.readdirSync(scenesFolder, { withFileTypes: true })
   .filter(entry => entry.isFile())
@@ -51,22 +32,24 @@ console.log(`Found ${markdownFiles.length} scene files.`);
 let success = 0;
 let failed = 0;
 
-for (const filePath of markdownFiles) {
-  console.log(`\nEvaluating scene: ${path.basename(filePath)}`);
+for (const [metric, target] of evaluations) {
+  console.log(`\n=== ${metric} / ${target} ===`);
 
-  for (const [metric, target] of evaluations) {
+  for (const filePath of markdownFiles) {
+    console.log(`\nEvaluating scene: ${path.basename(filePath)}`);
     try {
-      console.log(`  ${metric} / ${target}`);
 
       execFileSync(
-        evaluatorScript,
+        process.execPath,
         [
+          evaluatorScript,
           filePath,
           metric,
           target
         ],
         {
-          encoding: "utf8"
+          encoding: "utf8",
+          cwd: toolRoot
         }
       );
 
