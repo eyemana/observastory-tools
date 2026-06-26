@@ -214,6 +214,18 @@ function normalizeAwarenessMap(scores, plotThreadNames, characterNames) {
   return normalized;
 }
 
+function writeFileAtomic(targetPath, content) {
+  const directory = path.dirname(targetPath);
+  const basename = path.basename(targetPath);
+  const tempPath = path.join(
+    directory,
+    `.${basename}.${process.pid}.${Date.now()}.tmp`
+  );
+
+  fs.writeFileSync(tempPath, content, "utf8");
+  fs.renameSync(tempPath, targetPath);
+}
+
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 const pocRoot = findAncestorFolder(filePath, "POC");
@@ -453,4 +465,4 @@ if (isCharacterAwarenessMetric(metricName)) {
 }
 
 const updated = matter.stringify(parsed.content, parsed.data);
-fs.writeFileSync(filePath, updated, "utf8");
+writeFileAtomic(filePath, updated);
