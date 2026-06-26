@@ -9,6 +9,7 @@ import {
   ensureQueueDirs,
   finishJob,
   getQueuePaths,
+  isCancelRequested,
   listQueuedJobFiles,
   normalizeEvaluations,
   readJob,
@@ -20,12 +21,31 @@ const schedulerRoot = path.dirname(__filename);
 const toolRoot = path.join(schedulerRoot, "..");
 const evaluatorPath = path.join(toolRoot, "evaluators", "evaluate-scene.mjs");
 
+class JobCanceledError extends Error {
+  constructor(message = "Job canceled.") {
+    super(message);
+    this.name = "JobCanceledError";
+  }
+}
+
 function hasFlag(name) {
   return process.argv.includes(name);
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sleepWithCancel(ms, paths, jobId) {
+  const deadline = Date.now() + ms;
+
+  while (Date.now() < deadline) {
+    if (isCancelRequested(paths, jobId)) {
+      throw new JobCanceledError();
+    }
+
+    await sleep(Math.min(1000, deadline - Date.now()));
+  }
 }
 
 function appendLog(logPath, message) {
@@ -96,8 +116,9 @@ function acquireWorkerLock(paths) {
   return null;
 }
 
-async function runEvaluator(filePath, metric, target, logPath) {
+async function runEvaluator(filePath, metric, target, logPath, paths, jobId) {
   return new Promise((resolve) => {
+    let canceled = false;
     const child = spawn(
       process.execPath,
       [
@@ -112,21 +133,34 @@ async function runEvaluator(filePath, metric, target, logPath) {
       }
     );
 
+    const cancelTimer = setInterval(() => {
+      if (!isCancelRequested(paths, jobId)) {
+        return;
+      }
+
+      canceled = true;
+      child.kill();
+    }, 1000);
+
     child.stdout.on("data", (chunk) => appendLog(logPath, chunk.toString()));
     child.stderr.on("data", (chunk) => appendLog(logPath, chunk.toString()));
 
     child.on("error", (error) => {
+      clearInterval(cancelTimer);
       appendLog(logPath, `${error.stack ?? error.message}\n`);
       resolve({
         ok: false,
+        canceled,
         code: null,
         error
       });
     });
 
     child.on("close", (code) => {
+      clearInterval(cancelTimer);
       resolve({
         ok: code === 0,
+        canceled,
         code,
         error: null
       });
@@ -152,6 +186,7 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   }
 
   const sceneFiles = listSceneFiles(job.scenesFolder);
+  const total = sceneFiles.length * evaluations.length;
   let success = 0;
   let failed = 0;
   const failures = [];
@@ -159,17 +194,51 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   logLine(logPath, `Starting job ${job.id}`);
   logLine(logPath, `Scenes folder: ${job.scenesFolder}`);
   logLine(logPath, `Found ${sceneFiles.length} scene files.`);
+  logLine(logPath, `Planned evaluator calls: ${total}`);
   logLine(logPath, `Throttle: ${throttleMs}ms`);
 
+  job.progress = {
+    total,
+    completed: 0,
+    success,
+    failed
+  };
+  job.updatedAt = new Date().toISOString();
+  writeJob(jobPath, job);
+
   for (const [metric, target] of evaluations) {
+    if (isCancelRequested(paths, job.id)) {
+      throw new JobCanceledError();
+    }
+
     logLine(logPath);
     logLine(logPath, `=== ${metric} / ${target} ===`);
 
     for (const filePath of sceneFiles) {
+      if (isCancelRequested(paths, job.id)) {
+        throw new JobCanceledError();
+      }
+
       const sceneName = path.basename(filePath);
       logLine(logPath, `Evaluating ${sceneName}`);
 
-      const result = await runEvaluator(filePath, metric, target, logPath);
+      job.progress = {
+        total,
+        completed: success + failed,
+        success,
+        failed,
+        currentScene: sceneName,
+        currentMetric: metric,
+        currentTarget: target
+      };
+      job.updatedAt = new Date().toISOString();
+      writeJob(jobPath, job);
+
+      const result = await runEvaluator(filePath, metric, target, logPath, paths, job.id);
+
+      if (result.canceled) {
+        throw new JobCanceledError();
+      }
 
       if (result.ok) {
         success++;
@@ -186,6 +255,8 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
       }
 
       job.progress = {
+        total,
+        completed: success + failed,
         success,
         failed,
         currentScene: sceneName,
@@ -196,7 +267,11 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
       writeJob(jobPath, job);
 
       if (throttleMs > 0) {
-        await sleep(throttleMs);
+        if (isCancelRequested(paths, job.id)) {
+          throw new JobCanceledError();
+        }
+
+        await sleepWithCancel(throttleMs, paths, job.id);
       }
     }
   }
@@ -207,6 +282,8 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   const status = failed === 0 ? "succeeded" : "failed";
   finishJob(jobPath, job, status, {
     progress: {
+      total,
+      completed: success + failed,
       success,
       failed
     },
@@ -226,6 +303,16 @@ async function processJob(claimed, schedulerConfig, paths) {
     await processEvaluateScenesJob(jobPath, job, schedulerConfig, paths);
   } catch (error) {
     const logPath = path.join(paths.logsDir, `${job.id}.log`);
+
+    if (error instanceof JobCanceledError) {
+      logLine(logPath, `Job canceled: ${error.message}`);
+      finishJob(jobPath, job, "canceled", {
+        cancelReason: error.message,
+        logPath
+      });
+      return;
+    }
+
     logLine(logPath, `Job failed: ${error.stack ?? error.message}`);
     finishJob(jobPath, job, "failed", {
       error: error.message,

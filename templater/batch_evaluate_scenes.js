@@ -8,6 +8,10 @@ module.exports = async (tp) => {
       scheduler: {
         mode: "manual",
         launchWorkerFromTemplater: true,
+        monitorFromTemplater: true,
+        queueDir: ".queue",
+        statusNoticeIntervalMs: 5000,
+        statusNoticeMaxMinutes: 240,
         nodePath: "node"
       }
     };
@@ -25,6 +29,112 @@ module.exports = async (tp) => {
       ...(config.scheduler ?? {})
     };
     return config;
+  }
+
+  function readJsonFile(filePath) {
+    try {
+      return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  function findJobFile(toolsRoot, scheduler, jobId) {
+    const queueDir = scheduler.queueDir || ".queue";
+    const queueRoot = path.isAbsolute(queueDir)
+      ? queueDir
+      : path.join(toolsRoot, queueDir);
+    const jobsDir = path.join(queueRoot, "jobs");
+    const statuses = ["queued", "running", "succeeded", "failed"];
+
+    for (const status of statuses) {
+      const candidate = path.join(jobsDir, `${jobId}.${status}.json`);
+
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  function formatProgressNotice(job) {
+    if (job.status === "queued") {
+      return `Batch ${job.id} is queued.`;
+    }
+
+    const progress = job.progress ?? {};
+    const total = Number(progress.total) || 0;
+    const completed = Number(progress.completed) || 0;
+    const currentScene = progress.currentScene ?? "waiting for next scene";
+    const currentMetric = progress.currentMetric;
+    const currentTarget = progress.currentTarget;
+
+    if (job.status === "succeeded") {
+      return `Batch ${job.id} complete. ${progress.success ?? completed}/${total || completed} succeeded.`;
+    }
+
+    if (job.status === "failed") {
+      return `Batch ${job.id} finished with ${progress.failed ?? 0} failures.`;
+    }
+
+    const currentLabel = currentMetric && currentTarget
+      ? `${currentMetric} / ${currentTarget}`
+      : "starting";
+    const countLabel = total > 0 ? `${completed}/${total}` : `${completed}`;
+
+    return `Batch ${countLabel}: ${currentLabel} - ${currentScene}`;
+  }
+
+  function startProgressMonitor(toolsRoot, scheduler, jobId) {
+    if (scheduler.monitorFromTemplater === false) {
+      return;
+    }
+
+    const intervalMs = Math.max(
+      5000,
+      Number(scheduler.statusNoticeIntervalMs) || 5000
+    );
+    const maxMinutes = Math.max(
+      1,
+      Number(scheduler.statusNoticeMaxMinutes) || 240
+    );
+    const maxMs = maxMinutes * 60 * 1000;
+    const startedAt = Date.now();
+    let lastNotice = "";
+
+    const timer = setInterval(() => {
+      const jobFile = findJobFile(toolsRoot, scheduler, jobId);
+
+      if (!jobFile) {
+        if (Date.now() - startedAt > maxMs) {
+          clearInterval(timer);
+        }
+
+        return;
+      }
+
+      const job = readJsonFile(jobFile);
+
+      if (!job) {
+        return;
+      }
+
+      const notice = formatProgressNotice(job);
+
+      if (notice && notice !== lastNotice) {
+        new Notice(notice);
+        lastNotice = notice;
+      }
+
+      if (
+        job.status === "succeeded" ||
+        job.status === "failed" ||
+        Date.now() - startedAt > maxMs
+      ) {
+        clearInterval(timer);
+      }
+    }, intervalMs);
   }
 
   const activeFile = app.workspace.getActiveFile();
@@ -66,6 +176,8 @@ module.exports = async (tp) => {
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {
+    new Notice("Queueing batch evaluation...");
+
     const rawOutput = execFileSync(
       nodePath,
       [
@@ -85,6 +197,7 @@ module.exports = async (tp) => {
 
     const outputLine = rawOutput.trim().split(/\r?\n/).filter(Boolean).pop();
     const result = JSON.parse(outputLine);
+    startProgressMonitor(toolsRoot, scheduler, result.jobId);
 
     const shouldLaunchWorker =
       scheduler.mode !== "background" &&

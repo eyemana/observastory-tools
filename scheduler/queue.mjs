@@ -17,6 +17,10 @@ export function getQueuePaths(toolRoot, schedulerConfig = getSchedulerConfig(too
   };
 }
 
+export function getCancelMarkerPath(paths, jobId) {
+  return path.join(paths.jobsDir, `${jobId}.cancel`);
+}
+
 export function ensureQueueDirs(paths) {
   fs.mkdirSync(paths.jobsDir, { recursive: true });
   fs.mkdirSync(paths.logsDir, { recursive: true });
@@ -107,6 +111,79 @@ export function listQueuedJobFiles(paths) {
     .filter((name) => name.endsWith(".queued.json"))
     .sort((a, b) => a.localeCompare(b))
     .map((name) => path.join(paths.jobsDir, name));
+}
+
+export function listActiveJobFiles(paths) {
+  if (!fs.existsSync(paths.jobsDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(paths.jobsDir)
+    .filter((name) => name.endsWith(".queued.json") || name.endsWith(".running.json"))
+    .sort((a, b) => a.localeCompare(b))
+    .map((name) => path.join(paths.jobsDir, name));
+}
+
+export function findJobFile(paths, jobId) {
+  if (!fs.existsSync(paths.jobsDir)) {
+    return null;
+  }
+
+  const statuses = ["queued", "running", "succeeded", "failed", "canceled"];
+
+  for (const status of statuses) {
+    const candidate = path.join(paths.jobsDir, `${jobId}.${status}.json`);
+
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+export function isCancelRequested(paths, jobId) {
+  return fs.existsSync(getCancelMarkerPath(paths, jobId));
+}
+
+export function requestCancelJob(paths, jobId, reason = "Cancellation requested.") {
+  ensureQueueDirs(paths);
+
+  const now = new Date().toISOString();
+  const markerPath = getCancelMarkerPath(paths, jobId);
+  writeJsonAtomic(markerPath, {
+    jobId,
+    reason,
+    requestedAt: now
+  });
+
+  const queuedPath = path.join(paths.jobsDir, `${jobId}.queued.json`);
+
+  if (fs.existsSync(queuedPath)) {
+    const job = readJob(queuedPath);
+    job.status = "canceled";
+    job.cancelReason = reason;
+    job.canceledAt = now;
+    job.updatedAt = now;
+    writeJob(queuedPath, job);
+
+    const canceledPath = queuedPath.replace(/\.queued\.json$/, ".canceled.json");
+    fs.renameSync(queuedPath, canceledPath);
+
+    return {
+      status: "canceled",
+      jobPath: canceledPath,
+      markerPath
+    };
+  }
+
+  const jobPath = findJobFile(paths, jobId);
+
+  return {
+    status: jobPath ? "cancel-requested" : "not-found",
+    jobPath,
+    markerPath
+  };
 }
 
 export function claimJob(jobPath) {

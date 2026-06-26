@@ -10,6 +10,9 @@ export const defaultConfig = {
     throttleMs: 5000,
     pollIntervalMs: 30000,
     launchWorkerFromTemplater: true,
+    monitorFromTemplater: true,
+    statusNoticeIntervalMs: 5000,
+    statusNoticeMaxMinutes: 240,
     nodePath: "node",
     evaluations: [
       ["Relevance", "Character"],

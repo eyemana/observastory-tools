@@ -8,9 +8,12 @@ By default, the Templater script:
 
 1. creates a queued batch job under `obsidianTools/.queue/jobs`
 2. starts the scheduler worker in `--drain` mode
-3. returns control to Obsidian while the worker processes scenes in the background
+3. shows progress notices while the worker processes scenes in the background
+4. returns control to Obsidian
 
 The worker writes job logs to `obsidianTools/.queue/logs`.
+
+Cancel a queued or running batch from Obsidian with `Templates/Cancel-Batch-Evaluation.md`. Running jobs stop before the next evaluator call; if cancellation arrives while one evaluator process is active, the worker stops that child process.
 
 ## Scheduler modes
 
@@ -22,7 +25,10 @@ Scheduler behavior is controlled in `config.local.json`:
     "mode": "manual",
     "throttleMs": 5000,
     "pollIntervalMs": 30000,
-    "launchWorkerFromTemplater": true
+    "launchWorkerFromTemplater": true,
+    "monitorFromTemplater": true,
+    "statusNoticeIntervalMs": 5000,
+    "statusNoticeMaxMinutes": 240
   }
 }
 ```
@@ -30,6 +36,8 @@ Scheduler behavior is controlled in `config.local.json`:
 `manual` mode is the default. Templater queues the batch and starts a worker that drains all queued jobs, using `throttleMs` between evaluator calls.
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
+
+`statusNoticeIntervalMs` controls how often Obsidian checks the job file and shows progress notices. Set `monitorFromTemplater` to `false` if you only want logs and job files.
 
 Start the background worker from Obsidian with `Templates/Start-Scheduler.md`, or from a terminal:
 
@@ -41,6 +49,12 @@ Run one manual drain from a terminal:
 
 ```sh
 node scheduler/worker.mjs --drain
+```
+
+Cancel the latest queued or running job from a terminal:
+
+```sh
+node scheduler/cancel-job.mjs --latest
 ```
 
 ## Command-line batch evaluation

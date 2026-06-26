@@ -111,19 +111,13 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
     throw new Error(`Invalid ${label} bucket: ${rawResponse}`);
   }
 
-  if (typeof bucket.scene !== "number") {
-    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
-  }
-
-  if (typeof bucket.sceneRationale !== "string") {
-    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
-  }
-
   const normalized = {
-    scene: bucket.scene,
-    sceneRationale: bucket.sceneRationale,
+    scene: 0,
+    sceneRationale: "",
     items: {}
   };
+
+  const returnedItemScores = [];
 
   for (const name of expectedNames) {
     const rawValue = bucket[name];
@@ -140,12 +134,31 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
             ? rawValue.sceneRationale
             : ""
       };
+      returnedItemScores.push(rawValue.scene);
     } else {
       normalized.items[name] = {
         scene: 0,
         sceneRationale: `${label} was listed for evaluation, but the model did not return a scene score.`
       };
     }
+  }
+
+  if (typeof bucket.scene === "number") {
+    normalized.scene = bucket.scene;
+  } else if (returnedItemScores.length > 0) {
+    const sum = returnedItemScores.reduce((total, score) => total + score, 0);
+    normalized.scene = Math.round(sum / returnedItemScores.length);
+  } else {
+    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
+  }
+
+  if (typeof bucket.sceneRationale === "string") {
+    normalized.sceneRationale = bucket.sceneRationale;
+  } else if (returnedItemScores.length > 0) {
+    normalized.sceneRationale =
+      `Aggregate ${label} score derived from returned item scores.`;
+  } else {
+    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
   }
 
   return normalized;
