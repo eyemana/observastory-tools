@@ -27,7 +27,10 @@ export const defaultConfig = {
       ["Resolution", "Plot Thread"],
       ["Resolution", "Story Engine"],
       ["Resolution", "Arc"],
-      ["Character Awareness", "Plot Thread"]
+      ["Character Awareness", "Plot Thread"],
+      ["Reader Awareness", "Character"],
+      ["Reader Awareness", "Plot Thread"],
+      ["Reader Awareness", "Arc"]
     ]
   }
 };

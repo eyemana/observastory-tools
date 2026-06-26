@@ -69,6 +69,10 @@ function isCharacterAwarenessMetric(metricName) {
   return toCamelCase(metricName) === "characterAwareness";
 }
 
+function isReaderAwarenessMetric(metricName) {
+  return toCamelCase(metricName) === "readerAwareness";
+}
+
 async function fetchJsonFromOllama(prompt) {
   const response = await fetch(config.ollamaUrl, {
     method: "POST",
@@ -164,7 +168,7 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
   return normalized;
 }
 
-function normalizeAwarenessMap(scores, plotThreadNames, characterNames) {
+function normalizeCharacterAwarenessMap(scores, plotThreadNames, characterNames) {
   const normalized = {};
 
   const source =
@@ -214,6 +218,44 @@ function normalizeAwarenessMap(scores, plotThreadNames, characterNames) {
   return normalized;
 }
 
+function normalizeReaderAwarenessMap(scores, targetNames, label) {
+  const normalized = {};
+  const source =
+    scores && typeof scores === "object"
+      ? scores
+      : {};
+
+  for (const targetName of targetNames) {
+    const rawTarget = source[targetName];
+
+    let delta = 0;
+    let rationale =
+      `No new reader awareness was returned for this ${label} in this scene.`;
+
+    if (typeof rawTarget === "number") {
+      delta = rawTarget;
+      rationale = "";
+    } else if (
+      rawTarget &&
+      typeof rawTarget === "object" &&
+      typeof rawTarget.delta === "number"
+    ) {
+      delta = rawTarget.delta;
+      rationale =
+        typeof rawTarget.rationale === "string"
+          ? rawTarget.rationale
+          : "";
+    }
+
+    normalized[targetName] = {
+      delta,
+      rationale
+    };
+  }
+
+  return normalized;
+}
+
 function writeFileAtomic(targetPath, content) {
   const directory = path.dirname(targetPath);
   const basename = path.basename(targetPath);
@@ -232,6 +274,71 @@ const pocRoot = findAncestorFolder(filePath, "POC");
 
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
+
+function getTimelineOrder(scene) {
+  const order = Number(scene.data.timeline_order);
+  return Number.isFinite(order) ? order : null;
+}
+
+function listPriorScenes(currentFilePath, currentScene) {
+  const scenesFolder = path.dirname(currentFilePath);
+  const currentOrder = getTimelineOrder(currentScene);
+  const currentName = path.basename(currentFilePath);
+
+  return fs.readdirSync(scenesFolder, { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .filter(entry => entry.name.endsWith(".md"))
+    .filter(entry => entry.name !== currentName)
+    .map(entry => {
+      const scenePath = path.join(scenesFolder, entry.name);
+      const scene = matter(fs.readFileSync(scenePath, "utf8"));
+
+      return {
+        fileName: entry.name,
+        name: scene.data.name ?? path.basename(entry.name, ".md"),
+        timelineOrder: getTimelineOrder(scene),
+        readerKnowledge: scene.data.reader_knowledge ?? "",
+        characters: scene.data.characters ?? [],
+        plotThreads: scene.data.plotThreads ?? [],
+        arcs: scene.data.arcs ?? [],
+        content: scene.content.trim()
+      };
+    })
+    .filter(scene => {
+      if (currentOrder === null) {
+        return scene.fileName.localeCompare(currentName) < 0;
+      }
+
+      return scene.timelineOrder !== null && scene.timelineOrder < currentOrder;
+    })
+    .sort((a, b) => {
+      const orderA = a.timelineOrder ?? Number.MAX_SAFE_INTEGER;
+      const orderB = b.timelineOrder ?? Number.MAX_SAFE_INTEGER;
+
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      return a.fileName.localeCompare(b.fileName);
+    });
+}
+
+function formatPriorSceneContext(scenes) {
+  if (scenes.length === 0) {
+    return "No prior scene context is available. Treat all reader-facing information in this scene as newly available to the reader.";
+  }
+
+  return scenes.map(scene => {
+    return `Scene: ${scene.name}
+Timeline order: ${scene.timelineOrder ?? "unknown"}
+Reader knowledge marker: ${scene.readerKnowledge || "unspecified"}
+Characters: ${JSON.stringify(scene.characters)}
+Plot threads: ${JSON.stringify(scene.plotThreads)}
+Arcs: ${JSON.stringify(scene.arcs)}
+Text:
+${scene.content}`;
+  }).join("\n\n---\n\n");
+}
 
 function buildStandardMetricPrompt(metricName, targetConfig, targetNames, targetDefinitions) {
   const metricDefinition = readDefinition(
@@ -431,7 +538,7 @@ async function evaluateCharacterAwareness(targetName) {
   let plotThreads;
 
   if (characterNames.length === 0 || plotThreadNames.length === 0) {
-    plotThreads = normalizeAwarenessMap(
+    plotThreads = normalizeCharacterAwarenessMap(
       {},
       plotThreadNames,
       characterNames
@@ -446,7 +553,7 @@ async function evaluateCharacterAwareness(targetName) {
 
     const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
-    plotThreads = normalizeAwarenessMap(
+    plotThreads = normalizeCharacterAwarenessMap(
       scores.plotThreads,
       plotThreadNames,
       characterNames
@@ -458,8 +565,189 @@ async function evaluateCharacterAwareness(targetName) {
   parsed.data.ai.characterAwareness.updated = new Date().toISOString();
 }
 
+function getReaderAwarenessGuidance(targetConfig) {
+  if (targetConfig.key === "characters") {
+    return {
+      subject: "characters",
+      meaning:
+        "Reader awareness means how much NEW information the reader gains during this scene about a character.",
+      low:
+        "1-3 = the reader gains minor, indirect, or confirmatory information about the character.",
+      medium:
+        "4-6 = the reader gains meaningful new information about the character's role, traits, relationships, goals, history, choices, or stakes.",
+      high:
+        "7-9 = the reader gains major new understanding of the character.",
+      decisive:
+        "10 = the reader receives a decisive revelation about the character.",
+      cautions: [
+        "Score what the reader newly learns about the character, not whether the character is important.",
+        "The reader can learn about absent characters if the scene reveals meaningful information about them.",
+        "If a character merely appears without new reader-facing information, use delta 0 or a low confirmatory score."
+      ]
+    };
+  }
+
+  if (targetConfig.key === "arcs") {
+    return {
+      subject: "arcs",
+      meaning:
+        "Reader awareness means how much NEW evidence the reader receives during this scene that an arc is progressing, changing direction, deepening, or resolving.",
+      low:
+        "1-3 = the reader receives minor, indirect, or confirmatory evidence of arc movement.",
+      medium:
+        "4-6 = the reader receives meaningful evidence of progress, regression, complication, or change in the arc.",
+      high:
+        "7-9 = the reader receives major evidence of arc movement or a significant turning point.",
+      decisive:
+        "10 = the reader receives decisive evidence of a major arc breakthrough, reversal, or resolution.",
+      cautions: [
+        "Score evidence shown to the reader, not author intent that remains invisible on the page.",
+        "Do not score whether the arc is important in the story.",
+        "If the scene only repeats already-established arc movement, use delta 0 or a low confirmatory score."
+      ]
+    };
+  }
+
+  return {
+    subject: "plot threads",
+    meaning:
+      "Reader awareness means how much NEW information the reader gains during this scene about a plot thread.",
+    low:
+      "1-3 = the reader gains minor, indirect, or confirmatory information about the plot thread.",
+    medium:
+      "4-6 = the reader gains meaningful new information or a clearer connection.",
+    high:
+      "7-9 = the reader gains major new understanding.",
+    decisive:
+      "10 = the reader receives a decisive revelation about the plot thread.",
+    cautions: [
+      "Do not score plot importance.",
+      "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."
+    ]
+  };
+}
+
+function buildReaderAwarenessPrompt(targetConfig, targetNames, targetDefinitions, priorSceneContext) {
+  const guidance = getReaderAwarenessGuidance(targetConfig);
+
+  return `
+Return JSON only.
+Return compact valid JSON.
+Do not include trailing commas.
+Every opened object must be closed.
+Do not include markdown.
+
+Evaluate reader awareness of ${guidance.subject} for this scene.
+
+${targetConfig.pluralLabel}:
+${JSON.stringify(targetNames, null, 2)}
+
+Use EXACTLY the listed ${targetConfig.label} names as JSON keys.
+Do not shorten names.
+Do not add unlisted ${targetConfig.pluralLabel}.
+Do not omit listed ${targetConfig.pluralLabel}.
+
+${guidance.meaning}
+
+Score delta from 0-10.
+
+0 = the reader gains no new awareness for this ${targetConfig.label} in this scene.
+${guidance.low}
+${guidance.medium}
+${guidance.high}
+${guidance.decisive}
+
+This is a delta, not cumulative awareness.
+Compare this scene to the prior scene context, and score only information newly available to the reader in this scene.
+The reader can learn from narration, dramatic irony, scene framing, implications, reveals, and any point-of-view character.
+The reader is not limited to what any character knows.
+Do not score what characters know; this is reader-facing awareness only.
+Do not score scene relevance.
+${guidance.cautions.join("\n")}
+
+Each rationale must be a single sentence supporting the delta.
+
+Use these ${targetConfig.pluralLabel} definitions:
+${targetDefinitions}
+
+Prior scene context available to the reader:
+${priorSceneContext}
+
+Current scene reader knowledge marker:
+${parsed.data.reader_knowledge ?? "unspecified"}
+
+Current scene:
+
+${parsed.content}
+
+Required JSON:
+{
+  "${targetConfig.key}": {
+    "${targetConfig.label}Name": {
+      "delta": number,
+      "rationale": "string"
+    }
+  }
+}
+`;
+}
+
+async function evaluateReaderAwareness(targetName) {
+  const targetConfig = getTargetConfig(targetName);
+
+  if (!["characters", "plotThreads", "arcs"].includes(targetConfig.key)) {
+    throw new Error(
+      `Reader Awareness only supports targets "Character", "Plot Thread", and "Arc". Received "${targetName}".`
+    );
+  }
+
+  const targetNames = parsed.data[targetConfig.key] ?? [];
+
+  const targetDefinitions = formatDefinitions(
+    readDefinitions(
+      pocRoot,
+      targetConfig.folder,
+      targetNames
+    )
+  );
+
+  let targetScores;
+
+  if (targetNames.length === 0) {
+    targetScores = normalizeReaderAwarenessMap(
+      {},
+      targetNames,
+      targetConfig.label
+    );
+  } else {
+    const priorSceneContext = formatPriorSceneContext(
+      listPriorScenes(filePath, parsed)
+    );
+    const prompt = buildReaderAwarenessPrompt(
+      targetConfig,
+      targetNames,
+      targetDefinitions,
+      priorSceneContext
+    );
+
+    const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
+
+    targetScores = normalizeReaderAwarenessMap(
+      scores[targetConfig.key],
+      targetNames,
+      targetConfig.label
+    );
+  }
+
+  parsed.data.ai.readerAwareness = parsed.data.ai.readerAwareness ?? {};
+  parsed.data.ai.readerAwareness[targetConfig.key] = targetScores;
+  parsed.data.ai.readerAwareness.updated = new Date().toISOString();
+}
+
 if (isCharacterAwarenessMetric(metricName)) {
   await evaluateCharacterAwareness(targetName);
+} else if (isReaderAwarenessMetric(metricName)) {
+  await evaluateReaderAwareness(targetName);
 } else {
   await evaluateStandardMetric(metricName, targetName);
 }

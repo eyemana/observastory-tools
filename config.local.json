@@ -45,9 +45,10 @@
 
     // Evaluations to run for each scene, in order.
     // Format: [metric, target].
-    // Metric options: "Relevance", "Tension", "Resolution", "Character Awareness".
+    // Metric options: "Relevance", "Tension", "Resolution", "Character Awareness", "Reader Awareness".
     // Target options: "Character", "Plot Thread", "Story Engine", "Arc".
     // "Character Awareness" currently only supports target "Plot Thread".
+    // "Reader Awareness" currently supports targets "Character", "Plot Thread", and "Arc".
     "evaluations": [
       ["Relevance", "Character"],
       ["Relevance", "Plot Thread"],
@@ -61,7 +62,10 @@
       ["Resolution", "Plot Thread"],
       ["Resolution", "Story Engine"],
       ["Resolution", "Arc"],
-      ["Character Awareness", "Plot Thread"]
+      ["Character Awareness", "Plot Thread"],
+      ["Reader Awareness", "Character"],
+      ["Reader Awareness", "Plot Thread"],
+      ["Reader Awareness", "Arc"]
     ]
   }
 }
