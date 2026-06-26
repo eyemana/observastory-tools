@@ -15,6 +15,8 @@ The worker writes job logs to `obsidianTools/.queue/logs`.
 
 Cancel a queued or running batch from Obsidian with `Templates/Cancel-Batch-Evaluation.md`. Running jobs stop before the next evaluator call; if cancellation arrives while one evaluator process is active, the worker stops that child process.
 
+Run only Reader Awareness from Obsidian with `Templates/Queue-Reader-Awareness.md`. The full batch still includes Reader Awareness; this template is for reruns after scene order changes.
+
 ## Scheduler modes
 
 Scheduler behavior is controlled in `config.local.json`:
@@ -41,6 +43,12 @@ The config loader accepts JSON with comments, so `//` and `/* ... */` comments a
 
 `statusNoticeIntervalMs` controls how often Obsidian checks the job file and shows progress notices. Set `monitorFromTemplater` to `false` if you only want logs and job files.
 
+`storyboardReaderAwarenessAfterReorder` controls what the Storyboard report does after saving a changed tile order:
+
+- `manual`: save `timeline_order` only
+- `ask`: ask whether to queue Reader Awareness
+- `auto`: queue Reader Awareness immediately
+
 Start the background worker from Obsidian with `Templates/Start-Scheduler.md`, or from a terminal:
 
 ```sh
@@ -65,6 +73,12 @@ To enqueue a batch job:
 
 ```sh
 node scheduler/enqueue-batch.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+```
+
+To enqueue only Reader Awareness:
+
+```sh
+node scheduler/enqueue-batch.mjs "C:\Users\ian\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
 ```
 
 To run the older direct batch path without queueing:

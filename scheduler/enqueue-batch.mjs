@@ -2,6 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { enqueueEvaluateScenesJob } from "./queue.mjs";
+import { getSchedulerConfig } from "../tool-config.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
@@ -19,27 +20,57 @@ function readOption(name) {
 
 const positional = process.argv.slice(2).filter((arg, index, args) => {
   const previous = args[index - 1];
-  return !arg.startsWith("--") && previous !== "--vault-root" && previous !== "--source";
+  return !arg.startsWith("--") &&
+    previous !== "--vault-root" &&
+    previous !== "--source" &&
+    previous !== "--preset";
 });
 
 const scenesFolder = positional[0];
 const vaultRoot = readOption("--vault-root");
 const source = readOption("--source") ?? "manual";
+const preset = readOption("--preset") ?? "full";
+
+function getPresetConfig(name) {
+  const scheduler = getSchedulerConfig(toolRoot);
+
+  if (name === "full") {
+    return {
+      label: "Full Scene Evaluation",
+      evaluations: scheduler.evaluations
+    };
+  }
+
+  if (name === "reader-awareness") {
+    return {
+      label: "Reader Awareness",
+      evaluations: scheduler.readerAwarenessEvaluations
+    };
+  }
+
+  throw new Error(`Unknown evaluation preset "${name}". Expected "full" or "reader-awareness".`);
+}
 
 if (!scenesFolder) {
-  console.error("Usage: node scheduler/enqueue-batch.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>]");
+  console.error("Usage: node scheduler/enqueue-batch.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>]");
   process.exit(1);
 }
+
+const presetConfig = getPresetConfig(preset);
 
 const result = enqueueEvaluateScenesJob({
   toolRoot,
   scenesFolder,
   vaultRoot,
-  source
+  source,
+  label: presetConfig.label,
+  evaluations: presetConfig.evaluations
 });
 
 console.log(JSON.stringify({
   jobId: result.id,
+  preset,
+  label: presetConfig.label,
   jobPath: result.jobPath,
   logPath: result.logPath
 }));

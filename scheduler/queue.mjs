@@ -57,7 +57,9 @@ export function enqueueEvaluateScenesJob({
   toolRoot,
   scenesFolder,
   vaultRoot,
-  source = "manual"
+  source = "manual",
+  evaluations,
+  label = "Full Scene Evaluation"
 }) {
   const schedulerConfig = getSchedulerConfig(toolRoot);
   const paths = getQueuePaths(toolRoot, schedulerConfig);
@@ -65,7 +67,9 @@ export function enqueueEvaluateScenesJob({
 
   const now = new Date().toISOString();
   const id = makeJobId();
-  const normalizedEvaluations = normalizeEvaluations(schedulerConfig.evaluations);
+  const normalizedEvaluations = normalizeEvaluations(
+    evaluations ?? schedulerConfig.evaluations
+  );
 
   if (normalizedEvaluations.length === 0) {
     throw new Error("No scheduler evaluations are configured.");
@@ -76,6 +80,7 @@ export function enqueueEvaluateScenesJob({
     id,
     type: "evaluate-scenes",
     status: "queued",
+    label,
     createdAt: now,
     updatedAt: now,
     source,

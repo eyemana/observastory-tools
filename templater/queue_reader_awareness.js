@@ -230,7 +230,7 @@ module.exports = async (tp) => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const confirmed = await tp.system.suggester(
-    [`Queue evaluation for ${files.length} scenes in ${folderPath}`, "Cancel"],
+    [`Queue Reader Awareness for ${files.length} scenes in ${folderPath}`, "Cancel"],
     ["yes", "no"]
   );
 
@@ -249,7 +249,7 @@ module.exports = async (tp) => {
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {
-    new Notice("Queueing batch evaluation...");
+    new Notice("Queueing Reader Awareness evaluation...");
 
     const rawOutput = execFileSync(
       nodePath,
@@ -259,7 +259,9 @@ module.exports = async (tp) => {
         "--vault-root",
         basePath,
         "--source",
-        "templater"
+        "templater",
+        "--preset",
+        "reader-awareness"
       ],
       {
         encoding: "utf8",
@@ -292,12 +294,12 @@ module.exports = async (tp) => {
       );
 
       child.unref();
-      new Notice(`Queued batch ${result.jobId}. Scheduler started.`);
+      new Notice(`Queued Reader Awareness ${result.jobId}. Scheduler started.`);
     } else {
-      new Notice(`Queued batch ${result.jobId}. Background scheduler will pick it up.`);
+      new Notice(`Queued Reader Awareness ${result.jobId}. Background scheduler will pick it up.`);
     }
   } catch (error) {
-    new Notice("Failed to queue batch evaluation. See developer console.");
+    new Notice("Failed to queue Reader Awareness evaluation. See developer console.");
     console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }

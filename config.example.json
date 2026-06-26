@@ -43,6 +43,20 @@
     // Use a full path here if Obsidian cannot find "node" on PATH.
     "nodePath": "node",
 
+    // What Storyboard should do after saving a changed tile order.
+    // "manual": only save timeline_order; use Queue-Reader-Awareness manually.
+    // "ask": ask whether to queue Reader Awareness after saving order.
+    // "auto": queue Reader Awareness immediately after saving order.
+    "storyboardReaderAwarenessAfterReorder": "ask",
+
+    // Evaluations used by the dedicated Reader Awareness trigger.
+    // Full batch also includes these entries as part of scheduler.evaluations below.
+    "readerAwarenessEvaluations": [
+      ["Reader Awareness", "Character"],
+      ["Reader Awareness", "Plot Thread"],
+      ["Reader Awareness", "Arc"]
+    ],
+
     // Evaluations to run for each scene, in order.
     // Format: [metric, target].
     // Metric options: "Relevance", "Tension", "Resolution", "Character Awareness", "Reader Awareness".

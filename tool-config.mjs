@@ -14,6 +14,12 @@ export const defaultConfig = {
     statusNoticeIntervalMs: 5000,
     statusNoticeMaxMinutes: 240,
     nodePath: "node",
+    storyboardReaderAwarenessAfterReorder: "ask",
+    readerAwarenessEvaluations: [
+      ["Reader Awareness", "Character"],
+      ["Reader Awareness", "Plot Thread"],
+      ["Reader Awareness", "Arc"]
+    ],
     evaluations: [
       ["Relevance", "Character"],
       ["Relevance", "Plot Thread"],
