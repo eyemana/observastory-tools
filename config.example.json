@@ -48,6 +48,21 @@
     }
   },
 
+  "chronology": {
+    // Scene folders scanned by the Chronology Indexer.
+    // Paths are relative to the vault root. Absolute paths are allowed.
+    "paths": [
+      "Segments/Tech Tips/Obsidian/POC/Scenes"
+    ],
+
+    // Generated chronology metadata is written under scene frontmatter ai.chronology.
+    // The author maintains chronology_label and chronology_value.
+    "generatedPath": "ai.chronology",
+
+    // Sort values are generated as signed millisecond strings so deep time remains sortable.
+    "sortUnit": "ms"
+  },
+
   "scheduler": {
     // How jobs are picked up after Templater queues them.
     // "manual": Templater queues a job and starts a worker that drains the queue, then exits.

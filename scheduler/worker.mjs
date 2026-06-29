@@ -21,6 +21,7 @@ const schedulerRoot = path.dirname(__filename);
 const toolRoot = path.join(schedulerRoot, "..");
 const evaluatorPath = path.join(toolRoot, "evaluators", "evaluate-scene.mjs");
 const truthCollectorPath = path.join(toolRoot, "truth", "collect-truth-ledger.mjs");
+const chronologyIndexerPath = path.join(toolRoot, "chronology", "index-scene.mjs");
 
 class JobCanceledError extends Error {
   constructor(message = "Job canceled.") {
@@ -178,6 +179,74 @@ async function runTruthCollector(args, logPath, paths, jobId) {
       process.execPath,
       [
         truthCollectorPath,
+        ...args
+      ],
+      {
+        cwd: toolRoot,
+        windowsHide: true
+      }
+    );
+
+    const cancelTimer = setInterval(() => {
+      if (!isCancelRequested(paths, jobId)) {
+        return;
+      }
+
+      canceled = true;
+      child.kill();
+    }, 1000);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      clearInterval(cancelTimer);
+      appendLog(logPath, `${error.stack ?? error.message}\n`);
+      resolve({
+        ok: false,
+        canceled,
+        code: null,
+        stdout,
+        stderr,
+        error
+      });
+    });
+
+    child.on("close", (code) => {
+      clearInterval(cancelTimer);
+
+      if (stderr.trim()) {
+        appendLog(logPath, stderr);
+        if (!stderr.endsWith("\n")) {
+          appendLog(logPath, "\n");
+        }
+      }
+
+      resolve({
+        ok: code === 0,
+        canceled,
+        code,
+        stdout,
+        stderr,
+        error: null
+      });
+    });
+  });
+}
+
+async function runChronologyIndexer(args, logPath, paths, jobId) {
+  return new Promise((resolve) => {
+    let canceled = false;
+    let stdout = "";
+    let stderr = "";
+    const child = spawn(
+      process.execPath,
+      [
+        chronologyIndexerPath,
         ...args
       ],
       {
@@ -632,6 +701,138 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   });
 }
 
+async function processChronologyIndexJob(jobPath, job, schedulerConfig, paths) {
+  const logPath = path.join(paths.logsDir, `${job.id}.log`);
+  const throttleMs = Math.max(0, Number(schedulerConfig.throttleMs) || 0);
+  const fullConfig = loadConfig(toolRoot);
+  const chronologyConfig = fullConfig.chronology ?? {};
+  const vaultRoot = job.vaultRoot
+    ? path.resolve(job.vaultRoot)
+    : path.resolve(toolRoot, "..");
+  const configuredPaths = Array.isArray(job.paths) && job.paths.length > 0
+    ? job.paths
+    : (Array.isArray(chronologyConfig.paths) ? chronologyConfig.paths : []);
+  const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
+  const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
+  let indexed = 0;
+  let skipped = 0;
+  let failed = 0;
+  const failures = [];
+  const skippedFiles = [];
+
+  logLine(logPath, `Starting chronology index job ${job.id}`);
+  logLine(logPath, `Vault root: ${vaultRoot}`);
+  logLine(logPath, `Found ${files.length} scene files.`);
+  logLine(logPath, `Throttle: ${throttleMs}ms`);
+
+  job.progress = {
+    total: files.length,
+    completed: 0,
+    success: 0,
+    failed
+  };
+  job.updatedAt = new Date().toISOString();
+  writeJob(jobPath, job);
+
+  for (const [index, filePath] of files.entries()) {
+    if (isCancelRequested(paths, job.id)) {
+      throw new JobCanceledError();
+    }
+
+    const relativePath = path.relative(vaultRoot, filePath);
+    logLine(logPath, `Indexing ${relativePath}`);
+
+    job.progress = {
+      total: files.length,
+      completed: indexed + skipped + failed,
+      success: indexed + skipped,
+      failed,
+      currentScene: relativePath
+    };
+    job.updatedAt = new Date().toISOString();
+    writeJob(jobPath, job);
+
+    const result = await runChronologyIndexer(
+      [
+        filePath,
+        "--vault-root",
+        vaultRoot,
+        "--json"
+      ],
+      logPath,
+      paths,
+      job.id
+    );
+
+    if (result.canceled) {
+      throw new JobCanceledError();
+    }
+
+    let payload = null;
+    try {
+      payload = JSON.parse(result.stdout);
+    } catch {
+      // Leave payload as null; the failure record below captures process output.
+    }
+
+    if (result.ok && payload?.status === "indexed") {
+      indexed++;
+    } else if (result.ok && payload?.status === "missing") {
+      skipped++;
+      skippedFiles.push(filePath);
+    } else {
+      failed++;
+      failures.push({
+        filePath,
+        code: result.code,
+        status: payload?.status,
+        error: payload?.error ?? result.error?.message,
+        stderr: result.stderr.trim() || undefined,
+        stdout: payload ? undefined : result.stdout.trim() || undefined
+      });
+      logLine(logPath, `Failed ${relativePath}`);
+    }
+
+    job.progress = {
+      total: files.length,
+      completed: indexed + skipped + failed,
+      success: indexed + skipped,
+      failed,
+      currentScene: relativePath
+    };
+    job.updatedAt = new Date().toISOString();
+    writeJob(jobPath, job);
+
+    if (throttleMs > 0 && index < files.length - 1) {
+      if (isCancelRequested(paths, job.id)) {
+        throw new JobCanceledError();
+      }
+
+      await sleepWithCancel(throttleMs, paths, job.id);
+    }
+  }
+
+  logLine(logPath);
+  logLine(
+    logPath,
+    `Chronology index complete. ${indexed} indexed, ${skipped} skipped, ${failed} failed.`
+  );
+
+  finishJob(jobPath, job, failed === 0 ? "succeeded" : "failed", {
+    progress: {
+      total: files.length,
+      completed: indexed + skipped + failed,
+      success: indexed + skipped,
+      failed
+    },
+    indexed,
+    skipped,
+    skippedFiles,
+    failures,
+    logPath
+  });
+}
+
 async function processJob(claimed, schedulerConfig, paths) {
   const { job, jobPath } = claimed;
 
@@ -643,6 +844,11 @@ async function processJob(claimed, schedulerConfig, paths) {
 
     if (job.type === "truth-ledger") {
       await processTruthLedgerJob(jobPath, job, schedulerConfig, paths);
+      return;
+    }
+
+    if (job.type === "chronology-index") {
+      await processChronologyIndexJob(jobPath, job, schedulerConfig, paths);
       return;
     }
 

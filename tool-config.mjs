@@ -23,6 +23,13 @@ export const defaultConfig = {
       minConfidence: 6
     }
   },
+  chronology: {
+    paths: [
+      "Segments/Tech Tips/Obsidian/POC/Scenes"
+    ],
+    sortUnit: "ms",
+    generatedPath: "ai.chronology"
+  },
   scheduler: {
     mode: "manual",
     queueDir: ".queue",

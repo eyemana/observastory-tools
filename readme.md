@@ -12,14 +12,31 @@ From Obsidian, use these Templater templates:
 - `Templates/Analyze-Current-Scene.md`: queue the full configured analysis for only the active scene.
 - `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Collect-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
+- `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
 - `Templates/Start-Scheduler.md`: start a background scheduler worker.
 - `Templates/Stop-Scheduler.md`: stop the background scheduler worker.
 - `Templates/Cancel-Batch-Evaluation.md`: cancel the latest queued or running job.
 
 From a terminal in `obsidianTools`:
 
+To enqueue the full scene evaluation batch:
+
 ```sh
 node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+node scheduler/worker.mjs --drain
+```
+
+To enqueue the Truth Ledger crawl:
+
+```sh
+node scheduler/enqueue-truth-ledger.mjs
+node scheduler/worker.mjs --drain
+```
+
+To enqueue the Chronology Index:
+
+```sh
+node scheduler/enqueue-chronology-index.mjs
 node scheduler/worker.mjs --drain
 ```
 
@@ -51,7 +68,8 @@ name: Inventory Day
 type: Scene
 chapter_order: 1
 scene_order: 1
-chronology_order: 10
+chronology_label: "July 28, 2026, 7:15:03.192 PM"
+chronology_value: "2026-07-28T19:15:03.192"
 pov: Mara Bell
 characters:
   - Mara Bell
@@ -64,16 +82,30 @@ arcs:
 ---
 ```
 
-`chapter_order`, `scene_order`, and `chronology_order` are writer-authored structure fields. They are not AI-generated and do not belong under `ai`.
+`chapter_order`, `scene_order`, `chronology_label`, and `chronology_value` are writer-authored structure fields. The generated sortable chronology value belongs under `ai.chronology`.
 
 - `chapter_order`: the chapter's position in the book/story, and the field Storyboard uses to group scenes into chapter blocks.
 - `scene_order`: the scene's position inside that chapter.
-- `chronology_order`: the scene's position in story-world chronology. It can be any number, including negative values and decimals, so you can place scenes arbitrarily far in the past or future and insert scenes between existing chronology points.
+- `chronology_label`: the human-readable chronology display text.
+- `chronology_value`: the author-maintained chronology value. Supported starting forms include ISO timestamps such as `2026-07-28T19:15:03.192`, relative durations such as `-4000000000 years`, and scaled phrases such as `4 billion years before story present`.
 - `chapter`: optional label/title metadata if you want it later; Storyboard does not require it for grouping.
 
 Storyboard writes `chapter_order` and `scene_order` when you rearrange tiles and click `Save Order`.
-Storyboard metadata editing can write `chronology_order`, but drag-and-drop reordering does not change chronology.
-If a scene has no `chronology_order`, Character Awareness does not infer prior chronology from file name or presentation order.
+Storyboard metadata editing can write `chronology_label` and `chronology_value`, but drag-and-drop reordering does not change chronology.
+The Chronology Indexer reads `chronology_value` and writes generated metadata under `ai.chronology`:
+
+```yaml
+ai:
+  chronology:
+    status: ok
+    label: "July 28, 2026, 7:15:03.192 PM"
+    value: "2026-07-28T19:15:03.192"
+    sort: "1785262503192"
+    sortUnit: ms
+    precision: millisecond
+```
+
+If a scene has no generated `ai.chronology.sort` and no legacy `chronology_order`, Character Awareness does not infer prior chronology from file name or presentation order.
 Storyboard metadata editing prevents two scenes in the same `chapter_order` from sharing the same `scene_order`.
 
 ## Storyboard
@@ -95,6 +127,8 @@ The second selector controls the data lens:
 - `Story lists`: characters, plot threads, and arcs without Reader Awareness bars.
 
 Character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
+
+Open `Segments/Tech Tips/Obsidian/POC/Reports/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This report is read-only and sorts by `ai.chronology.sort`.
 
 ### Scene Tiles
 
@@ -175,7 +209,7 @@ Storyboard calculates cumulative totals by summing deltas in story order. If you
 
 ## Character Awareness
 
-Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by `chronology_order`, not by `chapter_order` and `scene_order`.
+Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by generated `ai.chronology.sort`, with legacy `chronology_order` as a fallback, not by `chapter_order` and `scene_order`.
 
 Scores are stored under scene frontmatter:
 
@@ -265,6 +299,7 @@ Simple report categories:
 - `Goal Bullseye`: radar view of average goal achievement across metric families.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
+- `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
 
 If a report is empty:
 
@@ -294,7 +329,13 @@ The config loader accepts JSON with comments, so `//` and `/* ... */` comments a
 }
 ```
 
-`manual` mode is the default. Templater queues the batch and starts a worker that drains queued jobs, using `throttleMs` between evaluator calls.
+The scheduler has one worker and multiple job types:
+
+- Scene evaluation jobs are queued with `scheduler/enqueue-batch.mjs`.
+- Truth Ledger crawl jobs are queued with `scheduler/enqueue-truth-ledger.mjs`.
+- Chronology Index jobs are queued with `scheduler/enqueue-chronology-index.mjs`.
+
+`manual` mode is the default. Templater queues the requested job and starts a worker that drains queued jobs, using `throttleMs` between evaluator calls, Truth Ledger note crawls, or Chronology Index scene updates.
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
 
