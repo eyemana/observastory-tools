@@ -11,6 +11,7 @@ From Obsidian, use these Templater templates:
 - `Templates/Batch-Evaluate-Scenes.md`: queue the full scene evaluation batch.
 - `Templates/Analyze-Current-Scene.md`: queue the full configured analysis for only the active scene.
 - `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
+- `Templates/Collect-Truth-Ledger.md`: collect author-written claim callouts into the generated Truth Ledger index.
 - `Templates/Start-Scheduler.md`: start a background scheduler worker.
 - `Templates/Stop-Scheduler.md`: stop the background scheduler worker.
 - `Templates/Cancel-Batch-Evaluation.md`: cancel the latest queued or running job.
@@ -143,11 +144,7 @@ If `storyboardReaderAwarenessAfterReorder` is set to `ask` or `auto`, Storyboard
 
 ## Reader Awareness
 
-<<<<<<< Updated upstream
-Reader Awareness keeps `delta` as the headline score, but also captures dimensions for misdirection, confidence, and wrong-track awareness.
-=======
 Reader Awareness is a delta score, not an absolute score. It also stores bounded numeric axes that can apply across story and non-story contexts.
->>>>>>> Stashed changes
 
 For each scene, the evaluator asks: what does the reader newly learn in this scene, compared to prior scenes?
 
@@ -167,25 +164,6 @@ ai:
         delta: 7
         salience: 8
         confidence: 6
-<<<<<<< Updated upstream
-        correctness: 4
-        trajectory: misdirected
-        truthStatus: misleading
-        belief: The ledger was probably misfiled.
-        source: Mara's initial assumption
-        rationale: The scene reveals new evidence about where the ledger may have gone.
-```
-
-`delta` is the cumulative chart input. `salience` is how present the subject is in the reader's mind after the scene. `confidence` is how strongly the reader likely believes their current interpretation. `correctness` is how aligned that belief is with story truth. `trajectory` and `truthStatus` capture whether the scene introduced, reinforced, corrected, confused, or misdirected awareness.
-
-Storyboard calculates cumulative totals by summing deltas in story order. If you change order, rerun Reader Awareness so each scene's delta and awareness dimensions are calculated against the correct prior context.
-
-## Character Awareness
-
-Character Awareness keeps `delta` as the headline score, but also captures what the character likely believes and whether that belief is correct.
-
-For each scene, the evaluator asks: what does each listed character plausibly learn about each listed plot thread during this scene?
-=======
         alignment: -4
         evidenceStrength: 7
         rationale: The scene gives the reader a visible but incomplete ledger clue.
@@ -198,7 +176,6 @@ Storyboard calculates cumulative totals by summing deltas in story order. If you
 ## Character Awareness
 
 Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by `chronology_order`, not by `chapter_order` and `scene_order`.
->>>>>>> Stashed changes
 
 Scores are stored under scene frontmatter:
 
@@ -211,17 +188,6 @@ ai:
           delta: 5
           salience: 7
           confidence: 6
-<<<<<<< Updated upstream
-          correctness: 4
-          trajectory: misdirected
-          truthStatus: misleading
-          belief: The ledger was probably misfiled.
-          source: initial inventory check
-          rationale: Mara notices the ledger is missing but initially interprets the evidence incorrectly.
-```
-
-`delta` is the cumulative chart input. `salience` is how present the plot thread is in the character's mind after the scene. `confidence` is how strongly the character likely believes their current interpretation. `correctness` is how aligned that belief is with story truth. `trajectory` and `truthStatus` capture whether the scene introduced, reinforced, corrected, confused, or misdirected the character's awareness.
-=======
           alignment: -3
           evidenceStrength: 6
           rationale: Mara notices the missing ledger but has limited support for what happened to it.
@@ -246,7 +212,34 @@ Modes:
 - `paraphrase`: store one tight model-written rationale sentence.
 
 Use `extractive` when you want the evaluator to avoid adding interpretive language. The normalizer drops evidence excerpts that do not appear in the supplied source text.
->>>>>>> Stashed changes
+
+## Truth Ledger
+
+The Truth Ledger is author-authored and collector-generated. You write claims wherever they naturally belong, then run `Templates/Collect-Truth-Ledger.md` or:
+
+```sh
+node truth/collect-truth-ledger.mjs
+```
+
+Claim blocks use Obsidian callout syntax:
+
+```md
+> [!claim] claim.missing-ledger.location
+> truth: true
+> subject: Missing Ledger
+> plotThreads: Missing Ledger
+> The missing ledger is hidden in the storm vault.
+```
+
+Supported `truth` values:
+
+- `true`
+- `false`
+- `partial`
+- `ambiguous`
+- `unknown`
+
+The collector scans configured folders, validates claim IDs and truth values, and writes the generated index to `obsidianTools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Segments/Tech Tips/Obsidian/POC/Reports/Truth Ledger.md` to review the collected claims in Obsidian.
 
 ## Reports
 
@@ -262,6 +255,7 @@ Simple report categories:
 - `Arc Relevance/Tension by Scene`: how scenes support or pressure arcs.
 - `Character Awareness of Plot Thread by Scene`: what characters newly learn about plot threads.
 - `Reader Awareness of Character/Plot Thread/Arc by Scene`: what the reader newly learns, shown as scene deltas and cumulative totals.
+- `Truth Ledger`: collected author-written claims from configured notes.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 
 If a report is empty:

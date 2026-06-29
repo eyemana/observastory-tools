@@ -8,6 +8,16 @@ export const defaultConfig = {
     rationaleMode: "paraphrase",
     rationaleSources: ["scene", "definitions", "priorScenes"]
   },
+  truthLedger: {
+    paths: [
+      "Segments/Tech Tips/Obsidian/POC/Characters",
+      "Segments/Tech Tips/Obsidian/POC/Plot Threads",
+      "Segments/Tech Tips/Obsidian/POC/Story Engines",
+      "Segments/Tech Tips/Obsidian/POC/Arcs",
+      "Segments/Tech Tips/Obsidian/POC/Scenes"
+    ],
+    outputPath: ".index/truth-ledger.json"
+  },
   scheduler: {
     mode: "manual",
     queueDir: ".queue",
