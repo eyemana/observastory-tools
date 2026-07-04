@@ -249,6 +249,27 @@ Modes:
 
 Use `extractive` when you want the evaluator to avoid adding interpretive language. The normalizer drops evidence excerpts that do not appear in the supplied source text.
 
+## Standard Metric Rationale Modes
+
+Relevance, Tension, Resolution, Pacing, Conflict, Poetics, and Coherence use `standardMetrics` in `config.local.json` or `config.example.json`.
+
+```json
+"standardMetrics": {
+  "default": {
+    "rationaleMode": "paraphrase",
+    "rationaleField": "sceneRationale"
+  }
+}
+```
+
+Modes:
+
+- `off`: store only numeric scores.
+- `extractive`: store exact evidence excerpts copied from the supplied scene or definitions.
+- `paraphrase`: store one tight rationale sentence in the configured `rationaleField`.
+
+Pacing, Conflict, Poetics, and Coherence are scene-only metrics. They use the target `Scene`, do not load character/plot/arc/story-engine definitions, and write scores under paths such as `ai.pacing.scene.scene`.
+
 ## Truth Ledger
 
 The Truth Ledger has two lanes:
@@ -295,6 +316,7 @@ Simple report categories:
 - `Plot Thread Relevance/Tension/Resolution by Scene`: how scenes support, pressure, or resolve plot threads.
 - `Story Engine Relevance/Tension by Scene`: how scenes support broad story engines such as mystery or institutional conflict.
 - `Arc Relevance/Tension by Scene`: how scenes support or pressure arcs.
+- `Pacing/Conflict/Poetics/Coherence`: scene-only scores stored under each metric's `scene` bucket.
 - `Character Awareness of Plot Thread by Scene`: what characters newly learn about plot threads.
 - `Reader Awareness of Character/Plot Thread/Arc by Scene`: what the reader newly learns, shown as scene deltas and cumulative totals.
 - `Truth Ledger`: collected author-written claims from configured notes. Inferred claims are generated into JSON for evaluator use but hidden from this report by default.

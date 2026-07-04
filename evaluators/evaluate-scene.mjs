@@ -26,6 +26,7 @@ const awarenessRationaleMode = ["off", "extractive", "paraphrase"].includes(
 const awarenessRationaleSources = Array.isArray(awarenessConfig.rationaleSources)
   ? new Set(awarenessConfig.rationaleSources)
   : new Set(["scene", "definitions", "priorScenes"]);
+const standardMetricsConfig = config.standardMetrics ?? {};
 
 const filePath = process.argv[2];
 const metricName = process.argv[3];
@@ -60,6 +61,13 @@ const targetConfigs = {
     folder: "Arcs",
     label: "arc",
     pluralLabel: "arcs"
+  },
+  Scene: {
+    key: "scene",
+    folder: null,
+    label: "scene",
+    pluralLabel: "scene",
+    sceneOnly: true
   }
 };
 
@@ -81,6 +89,39 @@ function isCharacterAwarenessMetric(metricName) {
 
 function isReaderAwarenessMetric(metricName) {
   return toCamelCase(metricName) === "readerAwareness";
+}
+
+function standardMetricSettings(metricName) {
+  const defaultSettings = standardMetricsConfig.default ?? {};
+  const metricSettings =
+    standardMetricsConfig.metrics?.[metricName] ??
+    standardMetricsConfig.metrics?.[toCamelCase(metricName)] ??
+    {};
+  const rationaleMode = ["off", "extractive", "paraphrase"].includes(
+    metricSettings.rationaleMode ?? defaultSettings.rationaleMode
+  )
+    ? metricSettings.rationaleMode ?? defaultSettings.rationaleMode
+    : "paraphrase";
+  const rationaleSources = Array.isArray(
+    metricSettings.rationaleSources ?? defaultSettings.rationaleSources
+  )
+    ? metricSettings.rationaleSources ?? defaultSettings.rationaleSources
+    : ["scene", "definitions"];
+  const rationaleField =
+    typeof (metricSettings.rationaleField ?? defaultSettings.rationaleField) === "string"
+      ? metricSettings.rationaleField ?? defaultSettings.rationaleField
+      : "sceneRationale";
+  const rationaleType =
+    typeof metricSettings.rationaleType === "string"
+      ? metricSettings.rationaleType
+      : `${metricName.toLowerCase()} rationale`;
+
+  return {
+    rationaleMode,
+    rationaleSources: new Set(rationaleSources),
+    rationaleField,
+    rationaleType
+  };
 }
 
 function clampNumber(value, min, max, fallback = 0) {
@@ -182,6 +223,88 @@ Return rationale as one tight sentence supporting the numeric values.
 Do not return belief, source, trajectory, truthStatus, labels, or invented categories.`;
 }
 
+function standardMetricSourceText(settings, parts) {
+  return Object.entries(parts)
+    .filter(([name]) => settings.rationaleSources.has(name))
+    .map(([, value]) => value)
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function standardMetricRationaleInstructions(settings) {
+  if (settings.rationaleMode === "off") {
+    return "Do not return rationale, evidence, excerpts, or explanatory prose.";
+  }
+
+  if (settings.rationaleMode === "extractive") {
+    return `
+Do not return paraphrased rationale or explanatory prose.
+Return evidence as 0-3 exact excerpts copied from the supplied scene or definitions.
+Each evidence excerpt must use the author's own words exactly.`;
+  }
+
+  return `
+Return ${settings.rationaleType} as one tight sentence supporting the associated score value.
+Use the JSON field "${settings.rationaleField}" for that rationale.`;
+}
+
+function standardMetricRationaleJsonShape(settings, indent = "    ") {
+  if (settings.rationaleMode === "off") {
+    return "";
+  }
+
+  if (settings.rationaleMode === "extractive") {
+    return `,
+${indent}"evidence": ["exact excerpt"]`;
+  }
+
+  return `,
+${indent}"${settings.rationaleField}": string`;
+}
+
+function readStandardMetricRationale(rawValue, settings) {
+  if (!rawValue || typeof rawValue !== "object") {
+    return "";
+  }
+
+  const configured = rawValue[settings.rationaleField];
+
+  if (typeof configured === "string") {
+    return configured;
+  }
+
+  if (typeof rawValue.sceneRationale === "string") {
+    return rawValue.sceneRationale;
+  }
+
+  if (typeof rawValue.rationale === "string") {
+    return rawValue.rationale;
+  }
+
+  return "";
+}
+
+function normalizeStandardMetricEntry(rawValue, settings, sourceText) {
+  const rawObject =
+    rawValue && typeof rawValue === "object"
+      ? rawValue
+      : {};
+  const normalized = {
+    scene: typeof rawObject.scene === "number" ? rawObject.scene : 0
+  };
+
+  if (settings.rationaleMode === "paraphrase") {
+    normalized[settings.rationaleField] = readStandardMetricRationale(rawObject, settings);
+  } else if (settings.rationaleMode === "extractive") {
+    normalized.evidence = normalizeEvidence(
+      rawObject.evidence ?? rawObject.excerpts,
+      sourceText
+    );
+  }
+
+  return normalized;
+}
+
 function awarenessJsonShape(targetConfig) {
   return `{
   "${targetConfig.key}": {
@@ -270,13 +393,27 @@ async function fetchJsonFromOllama(prompt) {
   }
 }
 
-function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawResponse) {
+function normalizeSubjectRelationshipScoreMap(
+  bucket,
+  expectedNames,
+  label,
+  rawResponse,
+  settings,
+  sourceText
+) {
   if (expectedNames.length === 0) {
-    return {
+    const empty = {
       scene: 0,
-      sceneRationale: `No ${label}s listed for this scene.`,
       items: {}
     };
+
+    if (settings.rationaleMode === "paraphrase") {
+      empty[settings.rationaleField] = `No ${label}s listed for this scene.`;
+    } else if (settings.rationaleMode === "extractive") {
+      empty.evidence = [];
+    }
+
+    return empty;
   }
 
   if (!bucket || typeof bucket !== "object") {
@@ -285,7 +422,6 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
 
   const normalized = {
     scene: 0,
-    sceneRationale: "",
     items: {}
   };
 
@@ -299,19 +435,21 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
       typeof rawValue === "object" &&
       typeof rawValue.scene === "number"
     ) {
-      normalized.items[name] = {
-        scene: rawValue.scene,
-        sceneRationale:
-          typeof rawValue.sceneRationale === "string"
-            ? rawValue.sceneRationale
-            : ""
-      };
+      normalized.items[name] = normalizeStandardMetricEntry(
+        rawValue,
+        settings,
+        sourceText
+      );
       returnedItemScores.push(rawValue.scene);
     } else {
-      normalized.items[name] = {
-        scene: 0,
-        sceneRationale: `${label} was listed for evaluation, but the model did not return a scene score.`
-      };
+      normalized.items[name] = { scene: 0 };
+
+      if (settings.rationaleMode === "paraphrase") {
+        normalized.items[name][settings.rationaleField] =
+          `${label} was listed for evaluation, but the model did not return a scene score.`;
+      } else if (settings.rationaleMode === "extractive") {
+        normalized.items[name].evidence = [];
+      }
     }
   }
 
@@ -324,16 +462,36 @@ function normalizeSubjectRelationshipScoreMap(bucket, expectedNames, label, rawR
     throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
   }
 
-  if (typeof bucket.sceneRationale === "string") {
-    normalized.sceneRationale = bucket.sceneRationale;
-  } else if (returnedItemScores.length > 0) {
-    normalized.sceneRationale =
-      `Aggregate ${label} score derived from returned item scores.`;
-  } else {
-    throw new Error(`Invalid ${label} scene rationale: ${rawResponse}`);
+  if (settings.rationaleMode === "paraphrase") {
+    const sceneRationale = readStandardMetricRationale(bucket, settings);
+
+    normalized[settings.rationaleField] =
+      sceneRationale ||
+      (
+        returnedItemScores.length > 0
+          ? `Aggregate ${label} score derived from returned item scores.`
+          : ""
+      );
+  } else if (settings.rationaleMode === "extractive") {
+    normalized.evidence = normalizeEvidence(
+      bucket.evidence ?? bucket.excerpts,
+      sourceText
+    );
   }
 
   return normalized;
+}
+
+function normalizeSceneOnlyScore(bucket, label, rawResponse, settings, sourceText) {
+  if (!bucket || typeof bucket !== "object") {
+    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
+  }
+
+  if (typeof bucket.scene !== "number") {
+    throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
+  }
+
+  return normalizeStandardMetricEntry(bucket, settings, sourceText);
 }
 
 function normalizeCharacterAwarenessMap(scores, plotThreadNames, characterNames, sourceText) {
@@ -594,12 +752,47 @@ ${scene.content}`;
   }).join("\n\n---\n\n");
 }
 
-function buildStandardMetricPrompt(metricName, targetConfig, targetNames, targetDefinitions) {
+function buildStandardMetricPrompt(
+  metricName,
+  targetConfig,
+  targetNames,
+  targetDefinitions,
+  settings
+) {
   const metricDefinition = readDefinition(
     pocRoot,
     "Metrics",
     metricName
   );
+
+  if (targetConfig.sceneOnly) {
+    return `
+Return JSON only.
+Return compact valid JSON.
+Do not include trailing commas.
+Every opened object must be closed.
+Do not include markdown.
+
+Score only this scene.
+Do not use other scenes, truth ledgers, chronology, or external story context.
+
+${standardMetricRationaleInstructions(settings)}
+
+Use this definition of ${metricName}:
+${metricDefinition}
+
+Scene:
+
+${parsed.content}
+
+Required JSON:
+{
+  "${targetConfig.key}": {
+    "scene": number${standardMetricRationaleJsonShape(settings, "    ")}
+  }
+}
+`;
+  }
 
   return `
 Return JSON only.
@@ -615,9 +808,9 @@ You must return one score object for every listed ${targetConfig.label}.
 Use EXACTLY the listed names as JSON keys.
 Do not omit any listed item.
 Do not add unlisted items.
-If an item is barely present, still include it with a low score and rationale.
+If an item is barely present, still include it with a low score and configured rationale output.
 
-The rationale-related JSON elements are to be supplied by you as a single sentence supporting the associated score value you gave.
+${standardMetricRationaleInstructions(settings)}
 
 Use this definition of ${metricName}:
 ${metricDefinition}
@@ -632,11 +825,9 @@ ${parsed.content}
 Required JSON:
 {
   "${targetConfig.key}": {
-    "scene": number,
-    "sceneRationale": string,
+    "scene": number${standardMetricRationaleJsonShape(settings, "    ")},
     "${targetConfig.label}Name": {
-      "scene": number,
-      "sceneRationale": string
+      "scene": number${standardMetricRationaleJsonShape(settings, "      ")}
     }
   }
 }
@@ -646,51 +837,85 @@ Required JSON:
 async function evaluateStandardMetric(metricName, targetName) {
   const metricKey = toCamelCase(metricName);
   const targetConfig = getTargetConfig(targetName);
+  const settings = standardMetricSettings(metricName);
 
-  const targetNames = parsed.data[targetConfig.key] ?? [];
+  const targetNames = targetConfig.sceneOnly
+    ? []
+    : parsed.data[targetConfig.key] ?? [];
 
-  const targetDefinitions = formatDefinitions(
-    readDefinitions(
-      pocRoot,
-      targetConfig.folder,
-      targetNames
-    )
-  );
+  const targetDefinitions = targetConfig.sceneOnly
+    ? ""
+    : formatDefinitions(
+      readDefinitions(
+        pocRoot,
+        targetConfig.folder,
+        targetNames
+      )
+    );
 
   let normalizedScores;
 
-  if (targetNames.length === 0) {
+  if (!targetConfig.sceneOnly && targetNames.length === 0) {
     normalizedScores = {
       scene: 0,
-      sceneRationale: `No ${targetConfig.pluralLabel} listed for this scene.`,
       items: {}
     };
+
+    if (settings.rationaleMode === "paraphrase") {
+      normalizedScores[settings.rationaleField] =
+        `No ${targetConfig.pluralLabel} listed for this scene.`;
+    } else if (settings.rationaleMode === "extractive") {
+      normalizedScores.evidence = [];
+    }
   } else {
     const prompt = buildStandardMetricPrompt(
       metricName,
       targetConfig,
       targetNames,
-      targetDefinitions
+      targetDefinitions,
+      settings
     );
 
     const { rawResponse, parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
-    normalizedScores = normalizeSubjectRelationshipScoreMap(
-      scores[targetConfig.key],
-      targetNames,
-      targetConfig.label,
-      rawResponse
-    );
+    const sourceText = standardMetricSourceText(settings, {
+      scene: parsed.content,
+      definitions: `${readDefinition(pocRoot, "Metrics", metricName)}\n\n${targetDefinitions}`
+    });
+
+    normalizedScores = targetConfig.sceneOnly
+      ? normalizeSceneOnlyScore(
+        scores[targetConfig.key],
+        metricName,
+        rawResponse,
+        settings,
+        sourceText
+      )
+      : normalizeSubjectRelationshipScoreMap(
+        scores[targetConfig.key],
+        targetNames,
+        targetConfig.label,
+        rawResponse,
+        settings,
+        sourceText
+      );
   }
 
   parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
 
   parsed.data.ai[metricKey][targetConfig.key] = {
-    scene: normalizedScores.scene,
-    sceneRationale: normalizedScores.sceneRationale
+    scene: normalizedScores.scene
   };
 
-  for (const [name, value] of Object.entries(normalizedScores.items)) {
+  if (settings.rationaleMode === "paraphrase") {
+    parsed.data.ai[metricKey][targetConfig.key][settings.rationaleField] =
+      normalizedScores[settings.rationaleField] ?? "";
+  } else if (settings.rationaleMode === "extractive") {
+    parsed.data.ai[metricKey][targetConfig.key].evidence =
+      normalizedScores.evidence ?? [];
+  }
+
+  for (const [name, value] of Object.entries(normalizedScores.items ?? {})) {
     parsed.data.ai[metricKey][targetConfig.key][name] = value;
   }
 

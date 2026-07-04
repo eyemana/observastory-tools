@@ -8,6 +8,36 @@ export const defaultConfig = {
     rationaleMode: "paraphrase",
     rationaleSources: ["scene", "definitions", "priorScenes"]
   },
+  standardMetrics: {
+    default: {
+      rationaleMode: "paraphrase",
+      rationaleSources: ["scene", "definitions"],
+      rationaleField: "sceneRationale"
+    },
+    metrics: {
+      Relevance: {
+        rationaleType: "relevance rationale"
+      },
+      Tension: {
+        rationaleType: "tension rationale"
+      },
+      Resolution: {
+        rationaleType: "resolution rationale"
+      },
+      Pacing: {
+        rationaleType: "pacing rationale"
+      },
+      Conflict: {
+        rationaleType: "conflict rationale"
+      },
+      Poetics: {
+        rationaleType: "poetics rationale"
+      },
+      Coherence: {
+        rationaleType: "coherence rationale"
+      }
+    }
+  },
   truthLedger: {
     paths: [
       "Segments/Tech Tips/Obsidian/POC/Characters",
@@ -59,6 +89,10 @@ export const defaultConfig = {
       ["Resolution", "Plot Thread"],
       ["Resolution", "Story Engine"],
       ["Resolution", "Arc"],
+      ["Pacing", "Scene"],
+      ["Conflict", "Scene"],
+      ["Poetics", "Scene"],
+      ["Coherence", "Scene"],
       ["Character Awareness", "Plot Thread"],
       ["Reader Awareness", "Character"],
       ["Reader Awareness", "Plot Thread"],

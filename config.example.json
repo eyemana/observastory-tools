@@ -19,6 +19,36 @@
     "rationaleSources": ["scene", "definitions", "priorScenes"]
   },
 
+  "standardMetrics": {
+    "default": {
+      // Controls whether non-awareness evaluators store rationale text.
+      // "off": store only bounded numeric fields.
+      // "extractive": store only exact evidence excerpts copied from supplied scene/definitions.
+      // "paraphrase": store one tight model-written rationale sentence.
+      "rationaleMode": "paraphrase",
+
+      // Source buckets allowed for extractive evidence validation.
+      // Available values: "scene", "definitions".
+      "rationaleSources": ["scene", "definitions"],
+
+      // Frontmatter field used for paraphrased rationale on standard metric score objects.
+      // Existing reports expect "sceneRationale".
+      "rationaleField": "sceneRationale"
+    },
+
+    // Per-metric wording for the configured rationale field.
+    // These labels are prompt guidance only; the JSON field is controlled by rationaleField above.
+    "metrics": {
+      "Relevance": { "rationaleType": "relevance rationale" },
+      "Tension": { "rationaleType": "tension rationale" },
+      "Resolution": { "rationaleType": "resolution rationale" },
+      "Pacing": { "rationaleType": "pacing rationale" },
+      "Conflict": { "rationaleType": "conflict rationale" },
+      "Poetics": { "rationaleType": "poetics rationale" },
+      "Coherence": { "rationaleType": "coherence rationale" }
+    }
+  },
+
   "truthLedger": {
     // Folders to scan for author-written [!claim] callouts.
     // Paths are relative to the vault root. Absolute paths are allowed.
@@ -116,8 +146,10 @@
 
     // Evaluations to run for each scene, in order.
     // Format: [metric, target].
-    // Metric options: "Relevance", "Tension", "Resolution", "Character Awareness", "Reader Awareness".
-    // Target options: "Character", "Plot Thread", "Story Engine", "Arc".
+    // Metric options: "Relevance", "Tension", "Resolution", "Pacing", "Conflict", "Poetics",
+    // "Coherence", "Character Awareness", "Reader Awareness".
+    // Target options: "Character", "Plot Thread", "Story Engine", "Arc", "Scene".
+    // "Pacing", "Conflict", "Poetics", and "Coherence" use target "Scene" and do not load external context.
     // "Character Awareness" currently only supports target "Plot Thread".
     // "Reader Awareness" currently supports targets "Character", "Plot Thread", and "Arc".
     "evaluations": [
@@ -133,6 +165,10 @@
       ["Resolution", "Plot Thread"],
       ["Resolution", "Story Engine"],
       ["Resolution", "Arc"],
+      ["Pacing", "Scene"],
+      ["Conflict", "Scene"],
+      ["Poetics", "Scene"],
+      ["Coherence", "Scene"],
       ["Character Awareness", "Plot Thread"],
       ["Reader Awareness", "Character"],
       ["Reader Awareness", "Plot Thread"],
