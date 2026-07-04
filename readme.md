@@ -317,6 +317,11 @@ Simple report categories:
 - `Story Engine Relevance/Tension by Scene`: how scenes support broad story engines such as mystery or institutional conflict.
 - `Arc Relevance/Tension by Scene`: how scenes support or pressure arcs.
 - `Pacing/Conflict/Poetics/Coherence`: scene-only scores stored under each metric's `scene` bucket.
+- `Pacing/Conflict/Poetics/Coherence by Scene`: basic line reports for the new scene-only metrics.
+- `Scene Metric Bullseye`: selected-scene radar and score bars across available metric families.
+- `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, and coherence.
+- `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
+- `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
 - `Character Awareness of Plot Thread by Scene`: what characters newly learn about plot threads.
 - `Reader Awareness of Character/Plot Thread/Arc by Scene`: what the reader newly learns, shown as scene deltas and cumulative totals.
 - `Truth Ledger`: collected author-written claims from configured notes. Inferred claims are generated into JSON for evaluator use but hidden from this report by default.
