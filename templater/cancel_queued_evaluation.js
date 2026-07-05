@@ -133,7 +133,7 @@ module.exports = async (tp) => {
     .filter(Boolean);
 
   if (jobs.length === 0) {
-    new Notice("No queued or running batch jobs.");
+    new Notice("No queued or running evaluation jobs.");
     return "";
   }
 
@@ -171,7 +171,7 @@ module.exports = async (tp) => {
 
     new Notice(`Cancellation requested for ${result.jobId}.`);
   } catch (error) {
-    new Notice("Failed to cancel batch job. See developer console.");
+    new Notice("Failed to cancel queued evaluation. See developer console.");
     console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }

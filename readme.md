@@ -1,6 +1,6 @@
 # Obsidian Tools
 
-Tools for evaluating Obsidian scene notes, queueing batch work, and reviewing story structure through Dataview reports.
+Tools for evaluating Obsidian scene notes, queueing scene evaluation work, and reviewing story structure through Dataview reports.
 
 The evaluators work on **scenes**. Storyboard can group scenes into chapters for planning, but chapter blocks are a visual and writer-controlled organization layer over scene notes.
 
@@ -8,8 +8,8 @@ The evaluators work on **scenes**. Storyboard can group scenes into chapters for
 
 From Obsidian, use these Templater templates:
 
-- `Templates/Batch-Evaluate-Scenes.md`: queue the full scene evaluation batch.
-- `Templates/Analyze-Current-Scene.md`: queue the full configured analysis for only the active scene.
+- `Templates/Queue-All-Scenes-for-Evaluation.md`: queue the full configured evaluation set for every scene in the active folder.
+- `Templates/Queue-Current-Scene-for-Evaluation.md`: queue the full configured evaluation set for only the active scene.
 - `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Collect-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
 - `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
@@ -17,14 +17,14 @@ From Obsidian, use these Templater templates:
 - `Templates/Start-Scheduler.md`: start a background scheduler worker.
 - `Templates/Stop-Scheduler-After-Current.md`: let the current job finish, then stop the worker.
 - `Templates/Stop-Scheduler.md`: stop the background scheduler worker immediately.
-- `Templates/Cancel-Batch-Evaluation.md`: cancel the latest queued or running job.
+- `Templates/Cancel-Queued-Evaluation.md`: cancel the latest queued or running job.
 
 From a terminal in `obsidianTools`:
 
-To enqueue the full scene evaluation batch:
+To enqueue the full scene evaluation queue:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes"
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes"
 node scheduler/worker.mjs --drain
 ```
 
@@ -45,13 +45,13 @@ node scheduler/worker.mjs --drain
 To enqueue only Reader Awareness:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
 ```
 
 To enqueue the full configured analysis for one scene:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
 ```
 
 To process one scene directly:
@@ -332,7 +332,7 @@ Simple report categories:
 
 If a report is empty:
 
-- Confirm the batch has run for that metric.
+- Confirm the scene evaluation queue has run for that metric.
 - Reopen the note or refresh Dataview.
 - Confirm the Charts plugin is enabled for chart reports.
 - Inspect the scene frontmatter under `ai` to confirm the expected data exists.
@@ -360,7 +360,7 @@ The config loader accepts JSON with comments, so `//` and `/* ... */` comments a
 
 The scheduler has one worker and multiple job types:
 
-- Scene evaluation jobs are queued with `scheduler/enqueue-batch.mjs`.
+- Scene evaluation jobs are queued with `scheduler/enqueue-scene-evaluations.mjs`.
 - Truth Ledger crawl jobs are queued with `scheduler/enqueue-truth-ledger.mjs`.
 - Chronology Index jobs are queued with `scheduler/enqueue-chronology-index.mjs`.
 
@@ -412,21 +412,21 @@ Cancel the latest queued or running job from a terminal:
 node scheduler/cancel-job.mjs --latest
 ```
 
-## Batch Scene Evaluation
+## Scene Evaluation Queueing
 
-Use `Templates/Batch-Evaluate-Scenes.md` from any scene in the folder you want to process.
+Use `Templates/Queue-All-Scenes-for-Evaluation.md` from any scene in the folder you want to process.
 
-Use `Templates/Analyze-Current-Scene.md` when you want the full configured evaluator set for just the active scene.
+Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full configured evaluator set for just the active scene.
 
 By default, the Templater script:
 
-1. creates a queued batch job under `obsidianTools/.queue/jobs`
+1. creates a queued scene evaluation job under `obsidianTools/.queue/jobs`
 2. starts the scheduler worker in `--drain` mode
 3. shows progress notices while the worker processes scenes in the background
 4. returns control to Obsidian
 
 The worker writes job logs to `obsidianTools/.queue/logs`.
 
-Cancel a queued or running batch from Obsidian with `Templates/Cancel-Batch-Evaluation.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
+Cancel a queued or running evaluation from Obsidian with `Templates/Cancel-Queued-Evaluation.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 
-Run only Reader Awareness from Obsidian with `Templates/Queue-Reader-Awareness.md`. The full batch also includes Reader Awareness; this template is for targeted reruns after order changes.
+Run only Reader Awareness from Obsidian with `Templates/Queue-Reader-Awareness.md`. The full scene evaluation queue also includes Reader Awareness; this template is for targeted reruns after order changes.

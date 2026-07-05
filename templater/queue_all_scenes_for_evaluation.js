@@ -130,7 +130,7 @@ module.exports = async (tp) => {
   }
 
   function formatProgressNotice(job) {
-    const label = job.label ?? "Batch";
+    const label = job.label ?? "Evaluation Job";
 
     if (job.status === "queued") {
       return `${label} ${job.id} is queued.`;
@@ -230,7 +230,7 @@ module.exports = async (tp) => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const confirmed = await tp.system.suggester(
-    [`Queue evaluation for ${files.length} scenes in ${folderPath}`, "Cancel"],
+    [`Queue all ${files.length} scenes in ${folderPath} for evaluation`, "Cancel"],
     ["yes", "no"]
   );
 
@@ -245,11 +245,11 @@ module.exports = async (tp) => {
   const scheduler = config.scheduler ?? {};
   const nodePath = scheduler.nodePath || "node";
   const absoluteFolderPath = path.join(basePath, folderPath);
-  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-batch.mjs");
+  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-scene-evaluations.mjs");
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {
-    new Notice("Queueing batch evaluation...");
+    new Notice("Queueing all scenes for evaluation...");
 
     const rawOutput = execFileSync(
       nodePath,
@@ -259,7 +259,7 @@ module.exports = async (tp) => {
         "--vault-root",
         basePath,
         "--source",
-        "templater"
+        "templater-all-scenes"
       ],
       {
         encoding: "utf8",
@@ -292,12 +292,12 @@ module.exports = async (tp) => {
       );
 
       child.unref();
-      new Notice(`Queued batch ${result.jobId}. Scheduler started.`);
+      new Notice(`Queued all scenes for evaluation ${result.jobId}. Scheduler started.`);
     } else {
-      new Notice(`Queued batch ${result.jobId}. Background scheduler will pick it up.`);
+      new Notice(`Queued all scenes for evaluation ${result.jobId}. Background scheduler will pick it up.`);
     }
   } catch (error) {
-    new Notice("Failed to queue batch evaluation. See developer console.");
+    new Notice("Failed to queue all scenes for evaluation. See developer console.");
     console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }

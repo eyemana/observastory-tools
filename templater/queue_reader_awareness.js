@@ -130,7 +130,7 @@ module.exports = async (tp) => {
   }
 
   function formatProgressNotice(job) {
-    const label = job.label ?? "Batch";
+    const label = job.label ?? "Evaluation Job";
 
     if (job.status === "queued") {
       return `${label} ${job.id} is queued.`;
@@ -245,7 +245,7 @@ module.exports = async (tp) => {
   const scheduler = config.scheduler ?? {};
   const nodePath = scheduler.nodePath || "node";
   const absoluteFolderPath = path.join(basePath, folderPath);
-  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-batch.mjs");
+  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-scene-evaluations.mjs");
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {

@@ -111,7 +111,7 @@
     // Background-mode poll interval. Only used by worker.mjs --watch / scheduler mode "background".
     "pollIntervalMs": 30000,
 
-    // In manual mode, start a detached worker from the Batch-Evaluate-Scenes Templater command.
+    // In manual mode, start a detached worker from the queueing Templater commands.
     // Set false if you want Templater to queue only and you will run worker.mjs --drain yourself.
     "launchWorkerFromTemplater": true,
 
@@ -137,7 +137,7 @@
     "storyboardReaderAwarenessAfterReorder": "ask",
 
     // Evaluations used by the dedicated Reader Awareness trigger.
-    // Full batch also includes these entries as part of scheduler.evaluations below.
+    // Full scene evaluation queueing also includes these entries as part of scheduler.evaluations below.
     "readerAwarenessEvaluations": [
       ["Reader Awareness", "Character"],
       ["Reader Awareness", "Plot Thread"],

@@ -130,7 +130,7 @@ module.exports = async (tp) => {
   }
 
   function formatProgressNotice(job) {
-    const label = job.label ?? "Batch";
+    const label = job.label ?? "Evaluation Job";
 
     if (job.status === "queued") {
       return `${label} ${job.id} is queued.`;
@@ -225,7 +225,7 @@ module.exports = async (tp) => {
   }
 
   const confirmed = await tp.system.suggester(
-    [`Analyze current scene: ${activeFile.basename}`, "Cancel"],
+    [`Queue current scene for evaluation: ${activeFile.basename}`, "Cancel"],
     ["yes", "no"]
   );
 
@@ -241,11 +241,11 @@ module.exports = async (tp) => {
   const nodePath = scheduler.nodePath || "node";
   const absoluteFolderPath = path.join(basePath, folderPath);
   const absoluteScenePath = path.join(basePath, activeFile.path);
-  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-batch.mjs");
+  const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-scene-evaluations.mjs");
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {
-    new Notice("Queueing scene analysis...");
+    new Notice("Queueing current scene for evaluation...");
 
     const rawOutput = execFileSync(
       nodePath,
@@ -290,12 +290,12 @@ module.exports = async (tp) => {
       );
 
       child.unref();
-      new Notice(`Queued scene analysis ${result.jobId}. Scheduler started.`);
+      new Notice(`Queued current scene for evaluation ${result.jobId}. Scheduler started.`);
     } else {
-      new Notice(`Queued scene analysis ${result.jobId}. Background scheduler will pick it up.`);
+      new Notice(`Queued current scene for evaluation ${result.jobId}. Background scheduler will pick it up.`);
     }
   } catch (error) {
-    new Notice("Failed to queue scene analysis. See developer console.");
+    new Notice("Failed to queue current scene for evaluation. See developer console.");
     console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }

@@ -66,7 +66,7 @@ function getPresetConfig(name) {
 }
 
 if (!scenesFolder) {
-  console.error("Usage: node scheduler/enqueue-batch.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>]");
+  console.error("Usage: node scheduler/enqueue-scene-evaluations.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>] [--scene <scene-file>]");
   process.exit(1);
 }
 
