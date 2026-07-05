@@ -5,6 +5,10 @@ import { fileURLToPath } from "url";
 
 import { getSchedulerConfig, loadConfig } from "../tool-config.mjs";
 import {
+  getEvaluationProfile,
+  listEligibleMarkdownFiles
+} from "../evaluation-filters.mjs";
+import {
   claimJob,
   clearWorkerStop,
   ensureQueueDirs,
@@ -120,17 +124,23 @@ function acquireWorkerLock(paths) {
   return null;
 }
 
-async function runEvaluator(filePath, metric, target, logPath, paths, jobId) {
+async function runEvaluator(filePath, metric, target, profileName, logPath, paths, jobId) {
+  const args = [
+    evaluatorPath,
+    filePath,
+    metric,
+    target
+  ];
+
+  if (profileName) {
+    args.push("--profile", profileName);
+  }
+
   return new Promise((resolve) => {
     let canceled = false;
     const child = spawn(
       process.execPath,
-      [
-        evaluatorPath,
-        filePath,
-        metric,
-        target
-      ],
+      args,
       {
         cwd: toolRoot,
         windowsHide: true
@@ -308,15 +318,40 @@ async function runChronologyIndexer(args, logPath, paths, jobId) {
   });
 }
 
-function listSceneFiles(scenesFolder) {
-  return fs.readdirSync(scenesFolder, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .filter((entry) => entry.name.endsWith(".md"))
-    .map((entry) => path.join(scenesFolder, entry.name))
-    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+function meaningfulFilterOverrides(filters = {}) {
+  return {
+    includeStatuses: Array.isArray(filters.includeStatuses) ? filters.includeStatuses : [],
+    excludeStatuses: Array.isArray(filters.excludeStatuses) ? filters.excludeStatuses : [],
+    includeTags: Array.isArray(filters.includeTags) ? filters.includeTags : [],
+    excludeTags: Array.isArray(filters.excludeTags) ? filters.excludeTags : []
+  };
 }
 
-function getJobSceneFiles(job) {
+function mergeFilters(base = {}, override = {}) {
+  const normalizedOverride = meaningfulFilterOverrides(override);
+
+  return {
+    ...base,
+    includeStatuses: [
+      ...(Array.isArray(base.includeStatuses) ? base.includeStatuses : []),
+      ...normalizedOverride.includeStatuses
+    ],
+    excludeStatuses: [
+      ...(Array.isArray(base.excludeStatuses) ? base.excludeStatuses : []),
+      ...normalizedOverride.excludeStatuses
+    ],
+    includeTags: [
+      ...(Array.isArray(base.includeTags) ? base.includeTags : []),
+      ...normalizedOverride.includeTags
+    ],
+    excludeTags: [
+      ...(Array.isArray(base.excludeTags) ? base.excludeTags : []),
+      ...normalizedOverride.excludeTags
+    ]
+  };
+}
+
+function getJobSceneFiles(job, fullConfig) {
   if (Array.isArray(job.sceneFiles) && job.sceneFiles.length > 0) {
     return job.sceneFiles
       .filter((filePath) => typeof filePath === "string")
@@ -325,7 +360,10 @@ function getJobSceneFiles(job) {
       .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
   }
 
-  return listSceneFiles(job.scenesFolder);
+  const profile = getEvaluationProfile(fullConfig, job.evaluationProfile);
+  const sceneFilters = mergeFilters(profile.sceneFilters, job.sceneFilters);
+
+  return listEligibleMarkdownFiles(job.scenesFolder, sceneFilters);
 }
 
 function resolvePath(root, candidate) {
@@ -416,18 +454,21 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   const logPath = path.join(paths.logsDir, `${job.id}.log`);
   const throttleMs = Math.max(0, Number(schedulerConfig.throttleMs) || 0);
   const evaluations = normalizeEvaluations(job.evaluations);
+  const fullConfig = loadConfig(toolRoot);
 
   if (evaluations.length === 0) {
     throw new Error(`Job ${job.id} does not contain any evaluations.`);
   }
 
-  const sceneFiles = getJobSceneFiles(job);
+  const sceneFiles = getJobSceneFiles(job, fullConfig);
+  const profile = getEvaluationProfile(fullConfig, job.evaluationProfile);
   const total = sceneFiles.length * evaluations.length;
   let success = 0;
   let failed = 0;
   const failures = [];
 
   logLine(logPath, `Starting job ${job.id}`);
+  logLine(logPath, `Evaluation profile: ${profile.name}`);
   logLine(logPath, `Scenes folder: ${job.scenesFolder}`);
   if (job.sceneFiles?.length) {
     logLine(logPath, `Explicit scene files: ${job.sceneFiles.length}`);
@@ -473,7 +514,15 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
       job.updatedAt = new Date().toISOString();
       writeJob(jobPath, job);
 
-      const result = await runEvaluator(filePath, metric, target, logPath, paths, job.id);
+      const result = await runEvaluator(
+        filePath,
+        metric,
+        target,
+        profile.name,
+        logPath,
+        paths,
+        job.id
+      );
 
       if (result.canceled) {
         throw new JobCanceledError();

@@ -60,6 +60,24 @@ export const defaultConfig = {
     sortUnit: "ms",
     generatedPath: "ai.chronology"
   },
+  evaluation: {
+    defaultProfile: "default",
+    elementFilters: {
+      includeStatuses: [],
+      excludeStatuses: ["draft", "archived", "inactive"],
+      includeTags: [],
+      excludeTags: ["no-evaluate", "exclude-evaluation"]
+    },
+    sceneFilters: {
+      includeStatuses: [],
+      excludeStatuses: ["draft", "archived", "inactive"],
+      includeTags: [],
+      excludeTags: ["no-evaluate", "exclude-evaluation"]
+    },
+    profiles: {
+      default: {}
+    }
+  },
   scheduler: {
     mode: "manual",
     queueDir: ".queue",

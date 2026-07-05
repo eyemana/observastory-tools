@@ -48,6 +48,18 @@ To enqueue only Reader Awareness:
 node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
 ```
 
+To enqueue only scenes tagged for a pass:
+
+```sh
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene-tag revision-pass-2
+```
+
+To enqueue with a named evaluation profile from `config.local.json`:
+
+```sh
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --profile harborExperiment
+```
+
 To enqueue the full configured evaluation set for one scene:
 
 ```sh
@@ -62,7 +74,7 @@ node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obs
 
 ## Scene Frontmatter
 
-Scene notes are the canonical evaluated units. The evaluator expects scene frontmatter to include the relevant story lists:
+Scene notes are the canonical evaluated units. The evaluator scores every eligible character, plot thread, story engine, or arc note against selected scenes by default. Per-scene story-element lists are optional metadata for planning surfaces such as Storyboard, not required evaluator input.
 
 ```yaml
 ---
@@ -73,14 +85,6 @@ scene_order: 1
 chronology_label: "July 28, 2026, 7:15:03.192 PM"
 chronology_value: "2026-07-28T19:15:03.192"
 pov: Mara Bell
-characters:
-  - Mara Bell
-plotThreads:
-  - Missing Ledger
-storyEngines:
-  - Mystery
-arcs:
-  - Professional Growth
 ---
 ```
 
@@ -90,7 +94,23 @@ arcs:
 - `scene_order`: the scene's position inside that chapter.
 - `chronology_label`: the human-readable chronology display text.
 - `chronology_value`: the author-maintained chronology value. Supported starting forms include ISO timestamps such as `2026-07-28T19:15:03.192`, relative durations such as `-4000000000 years`, and scaled phrases such as `4 billion years before story present`.
+- `tags`: optional Obsidian tags. Evaluation profiles can use scene tags to decide which scenes to queue. The default profile skips scenes tagged `no-evaluate` or `exclude-evaluation`.
+- `evaluate`: optional boolean. Set `evaluate: false` on a scene or story-element note to exclude it from evaluation.
 - `chapter`: optional label/title metadata if you want it later; Storyboard does not require it for grouping.
+
+Story-element notes can also use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `draft`, `archived`, or `inactive`, excluded tags such as `no-evaluate`, or `evaluate: false`.
+
+For rare scene-specific exceptions, use explicit include/exclude fields:
+
+```yaml
+includeCharacters:
+  - Mara Bell
+excludePlotThreads:
+  - Missing Ledger
+```
+
+Supported override fields are `includeCharacters`, `excludeCharacters`, `includePlotThreads`, `excludePlotThreads`, `includeStoryEngines`, `excludeStoryEngines`, `includeArcs`, and `excludeArcs`.
+If the same name appears in an include and exclude field for the same run, the evaluator stops with a configuration error instead of letting one side silently override the other.
 
 Storyboard writes `chapter_order` and `scene_order` when you rearrange tiles and click `Save Order`.
 Storyboard metadata editing can write `chronology_label` and `chronology_value`, but drag-and-drop reordering does not change chronology.
@@ -109,6 +129,43 @@ ai:
 
 If a scene has no generated `ai.chronology.sort` and no legacy `chronology_order`, Character Awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
 Storyboard metadata editing prevents two scenes in the same `chapter_order` from sharing the same `scene_order`.
+
+## Evaluation Scope
+
+Evaluation scope is controlled by note metadata and optional profiles, not by required per-scene story-element lists.
+
+- Element notes define the universe of evaluable characters, plot threads, story engines, and arcs.
+- Element `status`, `tags`, and `evaluate: false` decide whether an element is eligible.
+- Scene `status`, `tags`, and queue options decide which scenes are included in a run.
+- Scene-level include/exclude fields are rare hard overrides for a specific scene.
+  Include/exclude conflicts are errors for names, statuses, and tags.
+
+The default profile includes element notes and scenes unless they opt out through `evaluate: false`, an excluded status, or an excluded tag. To skip a scene in the normal queue, tag it like this:
+
+```yaml
+tags:
+  - no-evaluate
+```
+
+To run an experiment without editing many notes back and forth, use tags and profiles:
+
+```json
+"evaluation": {
+  "defaultProfile": "default",
+  "profiles": {
+    "harborExperiment": {
+      "elementFilters": {
+        "includeTags": ["harbor-experiment"]
+      },
+      "sceneFilters": {
+        "includeTags": ["harbor-experiment"]
+      }
+    }
+  }
+}
+```
+
+With that profile, only scenes and story elements tagged `harbor-experiment` are queued/evaluated. You can also use command-line scene filters such as `--scene-tag revision-pass-2` and `--exclude-scene-tag no-evaluate`.
 
 ## Storyboard
 

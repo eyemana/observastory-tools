@@ -87,6 +87,8 @@ export function enqueueEvaluateScenesJob({
   sceneFiles,
   vaultRoot,
   source = "manual",
+  evaluationProfile,
+  sceneFilters,
   evaluations,
   label = "Full Scene Evaluation"
 }) {
@@ -118,6 +120,8 @@ export function enqueueEvaluateScenesJob({
       ? sceneFiles.map((filePath) => path.resolve(filePath))
       : undefined,
     vaultRoot: vaultRoot ? path.resolve(vaultRoot) : undefined,
+    evaluationProfile,
+    sceneFilters,
     evaluations: normalizedEvaluations
   };
 

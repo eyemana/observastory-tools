@@ -6,12 +6,16 @@ import { fileURLToPath } from "url";
 import {
   findAncestorFolder,
   readDefinition,
-  readDefinitions,
   formatDefinitions,
   toCamelCase
 } from "../vault-utils.mjs";
 import { loadConfig } from "../tool-config.mjs";
 import { compareChronologySort } from "../chronology/chronology-utils.mjs";
+import {
+  applyNameFilters,
+  getEvaluationProfile,
+  listEligibleDefinitions
+} from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const evaluatorRoot = path.dirname(__filename);
@@ -28,9 +32,36 @@ const awarenessRationaleSources = Array.isArray(awarenessConfig.rationaleSources
   : new Set(["scene", "definitions", "priorScenes"]);
 const standardMetricsConfig = config.standardMetrics ?? {};
 
-const filePath = process.argv[2];
-const metricName = process.argv[3];
-const targetName = process.argv.slice(4).join(" ");
+function readOption(args, name) {
+  const index = args.indexOf(name);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  return args[index + 1];
+}
+
+function removeOption(args, name) {
+  const index = args.indexOf(name);
+
+  if (index === -1) {
+    return args;
+  }
+
+  return [
+    ...args.slice(0, index),
+    ...args.slice(index + 2)
+  ];
+}
+
+const args = process.argv.slice(2);
+const filePath = args[0];
+const metricName = args[1];
+const evaluationProfileName = readOption(args, "--profile");
+const targetArgs = removeOption(args.slice(2), "--profile");
+const targetName = targetArgs.join(" ");
+const evaluationProfile = getEvaluationProfile(config, evaluationProfileName);
 
 if (!filePath || !metricName || !targetName) {
   console.error("Usage: node evaluate-scene.mjs <file> <metricName> <targetName>");
@@ -408,7 +439,7 @@ function normalizeSubjectRelationshipScoreMap(
     };
 
     if (settings.rationaleMode === "paraphrase") {
-      empty[settings.rationaleField] = `No ${label}s listed for this scene.`;
+      empty[settings.rationaleField] = `No eligible ${label}s were available for this evaluation.`;
     } else if (settings.rationaleMode === "extractive") {
       empty.evidence = [];
     }
@@ -446,7 +477,7 @@ function normalizeSubjectRelationshipScoreMap(
 
       if (settings.rationaleMode === "paraphrase") {
         normalized.items[name][settings.rationaleField] =
-          `${label} was listed for evaluation, but the model did not return a scene score.`;
+          `${label} was selected for evaluation, but the model did not return a scene score.`;
       } else if (settings.rationaleMode === "extractive") {
         normalized.items[name].evidence = [];
       }
@@ -557,6 +588,38 @@ const pocRoot = findAncestorFolder(filePath, "POC");
 
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
+
+function explicitTargetField(prefix, targetConfig) {
+  return `${prefix}${targetConfig.key[0].toUpperCase()}${targetConfig.key.slice(1)}`;
+}
+
+function getTargetDefinitions(targetConfig) {
+  if (targetConfig.sceneOnly) {
+    return [];
+  }
+
+  const definitions = listEligibleDefinitions(
+    pocRoot,
+    targetConfig.folder,
+    evaluationProfile.elementFilters
+  );
+  const names = definitions.map((definition) => definition.name);
+  const includeField = explicitTargetField("include", targetConfig);
+  const excludeField = explicitTargetField("exclude", targetConfig);
+  const filteredNames = new Set(
+    applyNameFilters(
+      names,
+      parsed.data[includeField],
+      parsed.data[excludeField]
+    )
+  );
+
+  return definitions.filter((definition) => filteredNames.has(definition.name));
+}
+
+function getTargetNames(targetConfig) {
+  return getTargetDefinitions(targetConfig).map((definition) => definition.name);
+}
 
 function numericFrontmatter(value) {
   const number = Number(value);
@@ -839,19 +902,11 @@ async function evaluateStandardMetric(metricName, targetName) {
   const targetConfig = getTargetConfig(targetName);
   const settings = standardMetricSettings(metricName);
 
-  const targetNames = targetConfig.sceneOnly
-    ? []
-    : parsed.data[targetConfig.key] ?? [];
-
+  const targetDefinitionEntries = getTargetDefinitions(targetConfig);
+  const targetNames = targetDefinitionEntries.map((definition) => definition.name);
   const targetDefinitions = targetConfig.sceneOnly
     ? ""
-    : formatDefinitions(
-      readDefinitions(
-        pocRoot,
-        targetConfig.folder,
-        targetNames
-      )
-    );
+    : formatDefinitions(targetDefinitionEntries);
 
   let normalizedScores;
 
@@ -863,7 +918,7 @@ async function evaluateStandardMetric(metricName, targetName) {
 
     if (settings.rationaleMode === "paraphrase") {
       normalizedScores[settings.rationaleField] =
-        `No ${targetConfig.pluralLabel} listed for this scene.`;
+        `No eligible ${targetConfig.pluralLabel} were available for this evaluation.`;
     } else if (settings.rationaleMode === "extractive") {
       normalizedScores.evidence = [];
     }
@@ -1012,24 +1067,14 @@ async function evaluateCharacterAwareness(targetName) {
     );
   }
 
-  const characterNames = parsed.data.characters ?? [];
-  const plotThreadNames = parsed.data.plotThreads ?? [];
-
-  const characterDefinitions = formatDefinitions(
-    readDefinitions(
-      pocRoot,
-      "Characters",
-      characterNames
-    )
-  );
-
-  const plotThreadDefinitions = formatDefinitions(
-    readDefinitions(
-      pocRoot,
-      "Plot Threads",
-      plotThreadNames
-    )
-  );
+  const characterConfig = getTargetConfig("Character");
+  const plotThreadConfig = getTargetConfig("Plot Thread");
+  const characterDefinitionEntries = getTargetDefinitions(characterConfig);
+  const plotThreadDefinitionEntries = getTargetDefinitions(plotThreadConfig);
+  const characterNames = characterDefinitionEntries.map((definition) => definition.name);
+  const plotThreadNames = plotThreadDefinitionEntries.map((definition) => definition.name);
+  const characterDefinitions = formatDefinitions(characterDefinitionEntries);
+  const plotThreadDefinitions = formatDefinitions(plotThreadDefinitionEntries);
 
   let plotThreads;
 
@@ -1216,15 +1261,9 @@ async function evaluateReaderAwareness(targetName) {
     );
   }
 
-  const targetNames = parsed.data[targetConfig.key] ?? [];
-
-  const targetDefinitions = formatDefinitions(
-    readDefinitions(
-      pocRoot,
-      targetConfig.folder,
-      targetNames
-    )
-  );
+  const targetDefinitionEntries = getTargetDefinitions(targetConfig);
+  const targetNames = targetDefinitionEntries.map((definition) => definition.name);
+  const targetDefinitions = formatDefinitions(targetDefinitionEntries);
 
   let targetScores;
 

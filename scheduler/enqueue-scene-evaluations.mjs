@@ -2,7 +2,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { enqueueEvaluateScenesJob } from "./queue.mjs";
-import { getSchedulerConfig } from "../tool-config.mjs";
+import { getSchedulerConfig, loadConfig } from "../tool-config.mjs";
+import { getEvaluationProfile, normalizeFilterConfig } from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
@@ -36,6 +37,11 @@ const positional = process.argv.slice(2).filter((arg, index, args) => {
     previous !== "--vault-root" &&
     previous !== "--source" &&
     previous !== "--preset" &&
+    previous !== "--profile" &&
+    previous !== "--scene-status" &&
+    previous !== "--exclude-scene-status" &&
+    previous !== "--scene-tag" &&
+    previous !== "--exclude-scene-tag" &&
     previous !== "--scene";
 });
 
@@ -43,7 +49,35 @@ const scenesFolder = positional[0];
 const vaultRoot = readOption("--vault-root");
 const source = readOption("--source") ?? "manual";
 const preset = readOption("--preset") ?? "full";
+const evaluationProfile = readOption("--profile");
 const sceneFiles = readOptions("--scene");
+const sceneFilters = {
+  includeStatuses: readOptions("--scene-status"),
+  excludeStatuses: readOptions("--exclude-scene-status"),
+  includeTags: readOptions("--scene-tag"),
+  excludeTags: readOptions("--exclude-scene-tag")
+};
+
+function mergeFilterConfig(base = {}, override = {}) {
+  return {
+    includeStatuses: [
+      ...(Array.isArray(base.includeStatuses) ? base.includeStatuses : []),
+      ...(Array.isArray(override.includeStatuses) ? override.includeStatuses : [])
+    ],
+    excludeStatuses: [
+      ...(Array.isArray(base.excludeStatuses) ? base.excludeStatuses : []),
+      ...(Array.isArray(override.excludeStatuses) ? override.excludeStatuses : [])
+    ],
+    includeTags: [
+      ...(Array.isArray(base.includeTags) ? base.includeTags : []),
+      ...(Array.isArray(override.includeTags) ? override.includeTags : [])
+    ],
+    excludeTags: [
+      ...(Array.isArray(base.excludeTags) ? base.excludeTags : []),
+      ...(Array.isArray(override.excludeTags) ? override.excludeTags : [])
+    ]
+  };
+}
 
 function getPresetConfig(name) {
   const scheduler = getSchedulerConfig(toolRoot);
@@ -66,11 +100,22 @@ function getPresetConfig(name) {
 }
 
 if (!scenesFolder) {
-  console.error("Usage: node scheduler/enqueue-scene-evaluations.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>] [--scene <scene-file>]");
+  console.error("Usage: node scheduler/enqueue-scene-evaluations.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>] [--profile <name>] [--scene <scene-file>] [--scene-tag <tag>] [--exclude-scene-tag <tag>]");
   process.exit(1);
 }
 
-const presetConfig = getPresetConfig(preset);
+let presetConfig;
+let profile;
+
+try {
+  presetConfig = getPresetConfig(preset);
+  profile = getEvaluationProfile(loadConfig(toolRoot), evaluationProfile);
+  normalizeFilterConfig(profile.elementFilters);
+  normalizeFilterConfig(mergeFilterConfig(profile.sceneFilters, sceneFilters));
+} catch (error) {
+  console.error(error.message);
+  process.exit(1);
+}
 
 const result = enqueueEvaluateScenesJob({
   toolRoot,
@@ -78,6 +123,8 @@ const result = enqueueEvaluateScenesJob({
   sceneFiles,
   vaultRoot,
   source,
+  evaluationProfile: profile.name,
+  sceneFilters,
   label: presetConfig.label,
   evaluations: presetConfig.evaluations
 });
@@ -85,6 +132,7 @@ const result = enqueueEvaluateScenesJob({
 console.log(JSON.stringify({
   jobId: result.id,
   preset,
+  evaluationProfile: profile.name,
   label: presetConfig.label,
   sceneCount: sceneFiles.length || undefined,
   jobPath: result.jobPath,

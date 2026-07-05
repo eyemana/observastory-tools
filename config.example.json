@@ -93,6 +93,40 @@
     "sortUnit": "ms"
   },
 
+  "evaluation": {
+    // Named profiles let you switch evaluation scope without editing many notes.
+    // Element filters control which character, plot thread, story engine, and arc
+    // notes are eligible for scoring. Scene filters control which scenes are queued.
+    "defaultProfile": "default",
+
+    // These defaults include notes unless they are explicitly opted out.
+    // Put evaluate: false on any note to exclude it from every profile.
+    // Put tags: [no-evaluate] on a scene to keep it out of normal queue-all runs.
+    // Include/exclude conflicts are configuration errors; neither side overrides the other.
+    "elementFilters": {
+      "includeStatuses": [],
+      "excludeStatuses": ["draft", "archived", "inactive"],
+      "includeTags": [],
+      "excludeTags": ["no-evaluate", "exclude-evaluation"]
+    },
+
+    "sceneFilters": {
+      "includeStatuses": [],
+      "excludeStatuses": ["draft", "archived", "inactive"],
+      "includeTags": [],
+      "excludeTags": ["no-evaluate", "exclude-evaluation"]
+    },
+
+    // Example experiment profile:
+    // "harborExperiment": {
+    //   "elementFilters": { "includeTags": ["harbor-experiment"] },
+    //   "sceneFilters": { "includeTags": ["harbor-experiment"] }
+    // }
+    "profiles": {
+      "default": {}
+    }
+  },
+
   "scheduler": {
     // How jobs are picked up after Templater queues them.
     // "manual": Templater queues a job and starts a worker that drains the queue, then exits.
