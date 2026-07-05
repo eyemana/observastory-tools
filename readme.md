@@ -1,9 +1,68 @@
+# ObservaStory Tools
 
-# Obsidian Tools
+Reusable Node and Obsidian Templater tools for ObservaStory scene evaluation, queueing, chronology indexing, Truth Ledger collection, and Dataview report support.
 
-Tools for evaluating Obsidian scene notes, queueing scene evaluation work, and reviewing story structure through Dataview reports.
+The tools evaluate **scene notes**. Storyboard can group scenes into chapters for planning, but chapter blocks are a writer-controlled organization layer over scene notes.
 
-The evaluators work on **scenes**. Storyboard can group scenes into chapters for planning, but chapter blocks are a visual and writer-controlled organization layer over scene notes.
+## Package Recommendation
+
+Use `observastory-tools` for a public repository or npm-style package name, and keep the installed vault folder as `observastoryTools` for now. The camelCase folder keeps the current Obsidian scripts simple; the kebab-case package name is easier to publish and recognize as a distributable artifact.
+
+## Install In An Obsidian Vault
+
+1. Install Node.js 20 or newer and make sure `node` is available on PATH.
+2. Install and enable these Obsidian community plugins: Templater, Dataview, and Charts for chart-based reports.
+3. Clone or copy this tools folder into the vault root as `observastoryTools`.
+4. From a terminal in `observastoryTools`, run:
+
+```sh
+npm install
+```
+
+5. Copy `config.example.json` to `config.local.json` and adjust the model, Ollama URL, and story paths for your vault.
+6. In Obsidian Templater settings, set the user scripts folder to `observastoryTools/templater`.
+7. Put the command templates in a vault-level `Templates` folder, or point Obsidian at the folder where you keep them.
+8. For the POC book, keep the example content at `Example Book - A Ledger for Maribel Leigh` in the vault root.
+
+A minimal POC layout looks like this:
+
+```text
+Your Vault/
+  Templates/
+  observastoryTools/
+    config.local.json
+    templater/
+    scheduler/
+    evaluators/
+  Example Book - A Ledger for Maribel Leigh/
+    Scenes/
+    Characters/
+    Plot Threads/
+    Arcs/
+    Story Engines/
+    Reports/
+```
+
+## Configure The Example Book
+
+For `A Ledger for Maribel Leigh`, start from `config.example.json`. The relevant folders now live under the example book folder:
+
+```json
+"truthLedger": {
+  "paths": [
+    "Example Book - A Ledger for Maribel Leigh/Characters",
+    "Example Book - A Ledger for Maribel Leigh/Plot Threads",
+    "Example Book - A Ledger for Maribel Leigh/Story Engines",
+    "Example Book - A Ledger for Maribel Leigh/Arcs",
+    "Example Book - A Ledger for Maribel Leigh/Scenes"
+  ]
+},
+"chronology": {
+  "paths": [
+    "Example Book - A Ledger for Maribel Leigh/Scenes"
+  ]
+}
+```
 
 ## Quick Start
 
@@ -20,57 +79,57 @@ From Obsidian, use these Templater templates:
 - `Templates/Stop-Scheduler.md`: stop the background scheduler worker immediately.
 - `Templates/Cancel-Queued-Evaluation.md`: cancel the latest queued or running job.
 
-From a terminal in `obsidianTools`:
+From a terminal in `observastoryTools`:
 
 To enqueue the full scene evaluation queue:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes"
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault"
 node scheduler/worker.mjs --drain
 ```
 
 To enqueue the Truth Ledger crawl:
 
 ```sh
-node scheduler/enqueue-truth-ledger.mjs
+node scheduler/enqueue-truth-ledger.mjs --vault-root "C:\path\to\your\vault"
 node scheduler/worker.mjs --drain
 ```
 
 To enqueue the Chronology Index:
 
 ```sh
-node scheduler/enqueue-chronology-index.mjs
+node scheduler/enqueue-chronology-index.mjs --vault-root "C:\path\to\your\vault"
 node scheduler/worker.mjs --drain
 ```
 
 To enqueue only Reader Awareness:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --preset reader-awareness
 ```
 
 To enqueue only scenes tagged for a pass:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene-tag revision-pass-2
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --scene-tag revision-pass-2
 ```
 
 To enqueue with a named evaluation profile from `config.local.json`:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --profile harborExperiment
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --profile harborExperiment
 ```
 
 To enqueue the full configured evaluation set for one scene:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
+node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --scene "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes\Inventory Day.md"
 ```
 
 To process one scene directly:
 
 ```sh
-node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
+node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes\Inventory Day.md" "Tension" "Character"
 ```
 
 ## Scene Frontmatter
@@ -170,7 +229,7 @@ With that profile, only scenes and story elements tagged `harbor-experiment` are
 
 ## Storyboard
 
-Open `Segments/Tech Tips/Obsidian/POC/Reports/Storyboard.md` in Obsidian.
+Open `Example Book - A Ledger for Maribel Leigh/Reports/Storyboard.md` in Obsidian.
 
 ![Storyboard overview](docs/images/storyboard-overview.png)
 
@@ -188,7 +247,7 @@ The second selector controls the data lens:
 
 Character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
 
-Open `Segments/Tech Tips/Obsidian/POC/Reports/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This report is read-only and sorts by `ai.chronology.sort`.
+Open `Example Book - A Ledger for Maribel Leigh/Reports/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This report is read-only and sorts by `ai.chronology.sort`.
 
 ### Scene Tiles
 
@@ -360,11 +419,11 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values and asks the local LLM for inferred claims when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `obsidianTools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Segments/Tech Tips/Obsidian/POC/Reports/Truth Ledger.md` to review authored claims in Obsidian.
+The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values and asks the local LLM for inferred claims when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastoryTools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored claims in Obsidian.
 
 ## Reports
 
-Reports live in `Segments/Tech Tips/Obsidian/POC/Reports`.
+Reports live in `Example Book - A Ledger for Maribel Leigh/Reports`.
 
 Most report pages use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves.
 
@@ -478,12 +537,12 @@ Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full con
 
 By default, the Templater script:
 
-1. creates a queued scene evaluation job under `obsidianTools/.queue/jobs`
+1. creates a queued scene evaluation job under `observastoryTools/.queue/jobs`
 2. starts the scheduler worker in `--drain` mode
 3. shows progress notices while the worker processes scenes in the background
 4. returns control to Obsidian
 
-The worker writes job logs to `obsidianTools/.queue/logs`.
+The worker writes job logs to `observastoryTools/.queue/logs`.
 
 Cancel a queued or running evaluation from Obsidian with `Templates/Cancel-Queued-Evaluation.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 

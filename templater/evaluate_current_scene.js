@@ -100,7 +100,7 @@ module.exports = async (tp, metricName, targetName) => {
   }
 
   const basePath = app.vault.adapter.getBasePath();
-  const toolsRoot = path.join(basePath, "obsidianTools");
+  const toolsRoot = path.join(basePath, "observastoryTools");
   const evaluatorScript = path.join(toolsRoot, "evaluators", "evaluate-scene.mjs");
   const nodePath = loadNodePath(toolsRoot);
   const absoluteFilePath = path.join(basePath, activeFile.path);
