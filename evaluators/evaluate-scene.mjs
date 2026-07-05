@@ -738,7 +738,7 @@ function formatPriorChronologyContext(scenes) {
 
   return scenes.map(scene => {
     return `Scene: ${scene.name}
-Chronology sort: ${scene.chronologyOrder ?? "unknown"}
+Generated chronology sort: ${scene.chronologyOrder ?? "unknown"}
 Story order: ${
   scene.storyOrder
     ? `${scene.storyOrder.chapterOrder}.${scene.storyOrder.sceneOrder}`

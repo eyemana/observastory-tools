@@ -48,7 +48,7 @@ To enqueue only Reader Awareness:
 node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
 ```
 
-To enqueue the full configured analysis for one scene:
+To enqueue the full configured evaluation set for one scene:
 
 ```sh
 node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
@@ -107,7 +107,7 @@ ai:
     precision: millisecond
 ```
 
-If a scene has no generated `ai.chronology.sort` and no legacy `chronology_order`, Character Awareness does not infer prior chronology from file name or presentation order.
+If a scene has no generated `ai.chronology.sort` and no legacy `chronology_order`, Character Awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
 Storyboard metadata editing prevents two scenes in the same `chapter_order` from sharing the same `scene_order`.
 
 ## Storyboard
