@@ -6,21 +6,21 @@ The tools evaluate **scene notes**. Storyboard can group scenes into chapters fo
 
 ## Package Recommendation
 
-Use `observastory-tools` for a public repository or npm-style package name, and keep the installed vault folder as `observastoryTools` for now. The camelCase folder keeps the current Obsidian scripts simple; the kebab-case package name is easier to publish and recognize as a distributable artifact.
+Use `observastory-tools` for the repository, package name, and installed vault folder. Keeping one kebab-case name across GitHub, submodules, documentation, and Obsidian paths avoids a whole class of setup mistakes.
 
 ## Install In An Obsidian Vault
 
 1. Install Node.js 20 or newer and make sure `node` is available on PATH.
 2. Install and enable these Obsidian community plugins: Templater, Dataview, and Charts for chart-based reports.
-3. Clone or copy this tools folder into the vault root as `observastoryTools`.
-4. From a terminal in `observastoryTools`, run:
+3. Clone or copy this tools folder into the vault root as `observastory-tools`.
+4. From a terminal in `observastory-tools`, run:
 
 ```sh
 npm install
 ```
 
 5. Copy `config.example.json` to `config.local.json` and adjust the model, Ollama URL, and story paths for your vault.
-6. In Obsidian Templater settings, set the user scripts folder to `observastoryTools/templater`.
+6. In Obsidian Templater settings, set the user scripts folder to `observastory-tools/templater`.
 7. Put the command templates in a vault-level `Templates` folder, or point Obsidian at the folder where you keep them.
 8. For the POC book, keep the example content at `Example Book - A Ledger for Maribel Leigh` in the vault root.
 
@@ -29,7 +29,7 @@ A minimal POC layout looks like this:
 ```text
 Your Vault/
   Templates/
-  observastoryTools/
+  observastory-tools/
     config.local.json
     templater/
     scheduler/
@@ -79,7 +79,7 @@ From Obsidian, use these Templater templates:
 - `Templates/Stop-Scheduler.md`: stop the background scheduler worker immediately.
 - `Templates/Cancel-Queued-Evaluation.md`: cancel the latest queued or running job.
 
-From a terminal in `observastoryTools`:
+From a terminal in `observastory-tools`:
 
 To enqueue the full scene evaluation queue:
 
@@ -419,7 +419,7 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values and asks the local LLM for inferred claims when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastoryTools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored claims in Obsidian.
+The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values and asks the local LLM for inferred claims when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored claims in Obsidian.
 
 ## Reports
 
@@ -537,12 +537,12 @@ Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full con
 
 By default, the Templater script:
 
-1. creates a queued scene evaluation job under `observastoryTools/.queue/jobs`
+1. creates a queued scene evaluation job under `observastory-tools/.queue/jobs`
 2. starts the scheduler worker in `--drain` mode
 3. shows progress notices while the worker processes scenes in the background
 4. returns control to Obsidian
 
-The worker writes job logs to `observastoryTools/.queue/logs`.
+The worker writes job logs to `observastory-tools/.queue/logs`.
 
 Cancel a queued or running evaluation from Obsidian with `Templates/Cancel-Queued-Evaluation.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 

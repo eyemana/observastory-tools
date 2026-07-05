@@ -113,7 +113,7 @@ module.exports = async (tp) => {
   }
 
   const basePath = app.vault.adapter.getBasePath();
-  const toolsRoot = path.join(basePath, "observastoryTools");
+  const toolsRoot = path.join(basePath, "observastory-tools");
   const scheduler = loadSchedulerConfig(toolsRoot);
   const queueDir = scheduler.queueDir || ".queue";
   const queueRoot = path.isAbsolute(queueDir)

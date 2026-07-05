@@ -201,7 +201,7 @@ module.exports = async () => {
   }
 
   const basePath = app.vault.adapter.getBasePath();
-  const toolsRoot = path.join(basePath, "observastoryTools");
+  const toolsRoot = path.join(basePath, "observastory-tools");
   const config = loadConfig(toolsRoot);
   const scheduler = config.scheduler ?? {};
   const nodePath = scheduler.nodePath || "node";
