@@ -24,7 +24,7 @@ From a terminal in `obsidianTools`:
 To enqueue the full scene evaluation batch:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes"
+node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes"
 node scheduler/worker.mjs --drain
 ```
 
@@ -45,19 +45,19 @@ node scheduler/worker.mjs --drain
 To enqueue only Reader Awareness:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
+node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --preset reader-awareness
 ```
 
 To enqueue the full configured analysis for one scene:
 
 ```sh
-node scheduler/enqueue-batch.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
+node scheduler/enqueue-batch.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes" --scene "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md"
 ```
 
 To process one scene directly:
 
 ```sh
-node evaluators/evaluate-scene.mjs "C:\Users\sampson\writers\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
+node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Segments\Tech Tips\Obsidian\POC\Scenes\01 Inventory Day.md" "Tension" "Character"
 ```
 
 ## Scene Frontmatter
