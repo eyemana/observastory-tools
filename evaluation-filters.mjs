@@ -44,28 +44,6 @@ function noteStatus(data = {}) {
   return normalizeValue(data.status);
 }
 
-function noteEvaluateFlag(data = {}) {
-  const value = data.evaluate;
-
-  if (typeof value === "boolean") {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const normalized = normalizeValue(value);
-
-    if (["false", "no", "off", "0"].includes(normalized)) {
-      return false;
-    }
-
-    if (["true", "yes", "on", "1"].includes(normalized)) {
-      return true;
-    }
-  }
-
-  return undefined;
-}
-
 export function normalizeFilterConfig(filters = {}) {
   const includeStatuses = new Set(asArray(filters.includeStatuses).map(normalizeValue).filter(Boolean));
   const excludeStatuses = new Set(asArray(filters.excludeStatuses).map(normalizeValue).filter(Boolean));
@@ -105,11 +83,6 @@ function intersects(left, right) {
 
 export function noteMatchesFilters(data = {}, filters = {}) {
   const normalized = normalizeFilterConfig(filters);
-  const evaluate = noteEvaluateFlag(data);
-
-  if (evaluate === false) {
-    return false;
-  }
 
   const status = noteStatus(data);
 
@@ -188,7 +161,7 @@ export function listEligibleDefinitions(projectRoot, category, filters = {}) {
     const parsed = readMarkdownData(filePath);
 
     return {
-      name: parsed.data.name ?? path.basename(filePath, ".md"),
+      name: path.basename(filePath, ".md"),
       content: parsed.content.trim(),
       filePath
     };

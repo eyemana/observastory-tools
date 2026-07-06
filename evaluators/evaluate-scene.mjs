@@ -801,10 +801,9 @@ function listPriorScenes(currentFilePath, currentScene) {
 
       return {
         fileName: entry.name,
-        name: scene.data.name ?? path.basename(entry.name, ".md"),
+        name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        readerKnowledge: scene.data.reader_knowledge ?? "",
         characters: scene.data.characters ?? [],
         plotThreads: scene.data.plotThreads ?? [],
         arcs: scene.data.arcs ?? [],
@@ -830,10 +829,9 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
 
       return {
         fileName: entry.name,
-        name: scene.data.name ?? path.basename(entry.name, ".md"),
+        name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        readerKnowledge: scene.data.reader_knowledge ?? "",
         characters: scene.data.characters ?? [],
         plotThreads: scene.data.plotThreads ?? [],
         arcs: scene.data.arcs ?? [],
@@ -856,7 +854,6 @@ Story order: ${
     ? `${scene.storyOrder.chapterOrder}.${scene.storyOrder.sceneOrder}`
     : "unknown"
 }
-Reader knowledge marker: ${scene.readerKnowledge || "unspecified"}
 Characters: ${JSON.stringify(scene.characters)}
 Plot threads: ${JSON.stringify(scene.plotThreads)}
 Arcs: ${JSON.stringify(scene.arcs)}
@@ -1328,9 +1325,6 @@ ${targetDefinitions}
 
 Prior scene context available to the reader:
 ${priorSceneContext}
-
-Current scene reader knowledge marker:
-${parsed.data.reader_knowledge ?? "unspecified"}
 
 Current scene:
 

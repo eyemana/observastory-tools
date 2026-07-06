@@ -110,8 +110,7 @@
     // notes are eligible for scoring. Scene filters control which scenes are queued.
     "defaultProfile": "default",
 
-    // These defaults include notes unless they are explicitly opted out.
-    // Put evaluate: false on any note to exclude it from every profile.
+    // These defaults include notes unless status or tags exclude them.
     // Put tags: [no-evaluate] on a scene to keep it out of normal queue-all runs.
     // Include/exclude conflicts are configuration errors; neither side overrides the other.
     "elementFilters": {

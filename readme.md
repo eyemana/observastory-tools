@@ -163,7 +163,6 @@ Scene notes are the canonical evaluated units. The evaluator scores every eligib
 
 ```yaml
 ---
-name: Inventory Day
 chapter_order: 1
 scene_order: 1
 chronology_label: "July 28, 2026, 7:15:03.192 PM"
@@ -173,16 +172,16 @@ pov: Mara Bell
 ```
 
 `chapter_order`, `scene_order`, `chronology_label`, and `chronology_value` are writer-authored structure fields. The generated sortable chronology value belongs under `ai.chronology`.
+Scene identity comes from the filename without the `.md` extension.
 
 - `chapter_order`: the chapter's position in the book/story, and the field Storyboard uses to group scenes into chapter blocks.
 - `scene_order`: the scene's position inside that chapter.
 - `chronology_label`: the human-readable chronology display text.
 - `chronology_value`: the author-maintained chronology value. Supported starting forms include ISO timestamps such as `2026-07-28T19:15:03.192`, relative durations such as `-4000000000 years`, and scaled phrases such as `4 billion years before story present`.
 - `tags`: optional Obsidian tags. Evaluation profiles can use scene tags to decide which scenes to queue. The default profile skips scenes tagged `no-evaluate` or `exclude-evaluation`.
-- `evaluate`: optional boolean. Set `evaluate: false` on a scene or story-element note to exclude it from evaluation.
 - `chapter`: optional label/title metadata if you want it later; Storyboard does not require it for grouping.
 
-Story-element notes can also use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `draft`, `archived`, or `inactive`, excluded tags such as `no-evaluate`, or `evaluate: false`.
+Story-element kind comes from folder location, and story-element identity comes from the filename without the `.md` extension. Story-element notes can use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `draft`, `archived`, or `inactive`, or excluded tags such as `no-evaluate`.
 
 For rare scene-specific exceptions, use explicit include/exclude fields:
 
@@ -219,12 +218,12 @@ Storyboard metadata editing prevents two scenes in the same `chapter_order` from
 Evaluation scope is controlled by note metadata and optional profiles, not by required per-scene story-element lists.
 
 - Element notes define the universe of evaluable characters, plot threads, story engines, and arcs.
-- Element `status`, `tags`, and `evaluate: false` decide whether an element is eligible.
+- Element `status` and `tags` decide whether an element is eligible.
 - Scene `status`, `tags`, and queue options decide which scenes are included in a run.
 - Scene-level include/exclude fields are rare hard overrides for a specific scene.
   Include/exclude conflicts are errors for names, statuses, and tags.
 
-The default profile includes element notes and scenes unless they opt out through `evaluate: false`, an excluded status, or an excluded tag. To skip a scene in the normal queue, tag it like this:
+The default profile includes element notes and scenes unless they opt out through an excluded status or an excluded tag. To skip a scene in the normal queue, tag it like this:
 
 ```yaml
 tags:
