@@ -1,0 +1,14 @@
+Implemented in observastory-tools.
+The core change is in [evaluate-scene.mjs](C:/git/observastory-poc/observastory-tools/evaluators/evaluate-scene.mjs): each metric/target run now computes an input fingerprint from the actual prompt inputs, model, profile, metric, and target. If the stored fingerprint matches, it logs a skip, does not call Ollama, and does not rewrite the scene file.
+Supporting changes:
+[tool-config.mjs](C:/git/observastory-poc/observastory-tools/tool-config.mjs) and [config.example.json](C:/git/observastory-poc/observastory-tools/config.example.json): added evaluationCache.enabled: true.
+[queue.mjs](C:/git/observastory-poc/observastory-tools/scheduler/queue.mjs), [enqueue-scene-evaluations.mjs](C:/git/observastory-poc/observastory-tools/scheduler/enqueue-scene-evaluations.mjs), and [worker.mjs](C:/git/observastory-poc/observastory-tools/scheduler/worker.mjs): added --force support to bypass cache intentionally.
+[readme.md](C:/git/observastory-poc/observastory-tools/readme.md): documented incremental behavior and force reruns.
+Important behavior: the first run after this change will still reprocess existing evaluations once, because old scene frontmatter has no stored fingerprints yet. After that, unchanged metric/axis runs should skip cleanly.
+Verified with:
+node --check evaluators\evaluate-scene.mjs
+node --check scheduler\worker.mjs
+node --check scheduler\queue.mjs
+node --check scheduler\enqueue-scene-evaluations.mjs
+node --check tool-config.mjs
+config smoke: manual:1000:20:true
