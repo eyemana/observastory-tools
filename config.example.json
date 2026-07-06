@@ -19,6 +19,25 @@
     "rationaleSources": ["scene", "definitions", "priorScenes"]
   },
 
+  "story": {
+    // Root folder for the book/story inside the Obsidian vault.
+    // Move this when you start a different tutorial or project.
+    "root": "Example Book - A Ledger for Maribel Leigh",
+
+    // Folder names are relative to story.root unless an absolute path is supplied.
+    // The defaults are intentionally plain so the vault stays easy to teach.
+    "folders": {
+      "scenes": "Scenes",
+      "characters": "Characters",
+      "plotThreads": "Plot Threads",
+      "storyEngines": "Story Engines",
+      "arcs": "Arcs",
+      "metrics": "Metrics",
+      "reports": "Reports",
+      "notes": "Notes"
+    }
+  },
+
   "standardMetrics": {
     "default": {
       // Controls whether non-awareness evaluators store rationale text.
@@ -50,15 +69,9 @@
   },
 
   "truthLedger": {
-    // Folders to scan for author-written [!claim] callouts.
-    // Paths are relative to the vault root. Absolute paths are allowed.
-    "paths": [
-      "Example Book - A Ledger for Maribel Leigh/Characters",
-      "Example Book - A Ledger for Maribel Leigh/Plot Threads",
-      "Example Book - A Ledger for Maribel Leigh/Story Engines",
-      "Example Book - A Ledger for Maribel Leigh/Arcs",
-      "Example Book - A Ledger for Maribel Leigh/Scenes"
-    ],
+    // Optional override for truth-ledger scan paths.
+    // Leave empty to scan story folders: Characters, Plot Threads, Story Engines, Arcs, Notes, and Scenes.
+    "paths": [],
 
     // Generated JSON index used by evaluators and reports.
     // Relative paths are resolved from the observastory-tools folder.
@@ -79,11 +92,9 @@
   },
 
   "chronology": {
-    // Scene folders scanned by the Chronology Indexer.
-    // Paths are relative to the vault root. Absolute paths are allowed.
-    "paths": [
-      "Example Book - A Ledger for Maribel Leigh/Scenes"
-    ],
+    // Optional override for Chronology Indexer scan paths.
+    // Leave empty to scan story.folders.scenes.
+    "paths": [],
 
     // Generated chronology metadata is written under scene frontmatter ai.chronology.
     // The author maintains chronology_label and chronology_value.

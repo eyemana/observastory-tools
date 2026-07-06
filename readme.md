@@ -25,7 +25,6 @@ npm install
 8. For the POC book, keep the example content at `Example Book - A Ledger for Maribel Leigh` in the vault root.
 
 A minimal POC layout looks like this:
-
 ```text
 Your Vault/
   Templates/
@@ -45,30 +44,38 @@ Your Vault/
 
 ## Configure The Example Book
 
-For `A Ledger for Maribel Leigh`, start from `config.example.json`. The relevant folders now live under the example book folder:
+
+For `A Ledger for Maribel Leigh`, start from `config.example.json`. The important idea is:
+
+- the **vault root** is the Obsidian vault folder
+- the **story root** is the book folder inside the vault
+- named story folders live inside that story root unless you override them
+
+For the tutorial, the story config looks like this:
 
 ```json
-"truthLedger": {
-  "paths": [
-    "Example Book - A Ledger for Maribel Leigh/Characters",
-    "Example Book - A Ledger for Maribel Leigh/Plot Threads",
-    "Example Book - A Ledger for Maribel Leigh/Story Engines",
-    "Example Book - A Ledger for Maribel Leigh/Arcs",
-    "Example Book - A Ledger for Maribel Leigh/Scenes"
-  ]
-},
-"chronology": {
-  "paths": [
-    "Example Book - A Ledger for Maribel Leigh/Scenes"
-  ]
+"story": {
+  "root": "Example Book - A Ledger for Maribel Leigh",
+  "folders": {
+    "scenes": "Scenes",
+    "characters": "Characters",
+    "plotThreads": "Plot Threads",
+    "storyEngines": "Story Engines",
+    "arcs": "Arcs",
+    "metrics": "Metrics",
+    "reports": "Reports",
+    "notes": "Notes"
+  }
 }
 ```
+
+Leave `truthLedger.paths` and `chronology.paths` empty unless you want to override the tutorial defaults. With empty paths, the Truth Ledger scans the configured story folders, and the Chronology Index scans the configured scenes folder.
 
 ## Quick Start
 
 From Obsidian, use these Templater templates:
 
-- `Templates/Queue-All-Scenes-for-Evaluation.md`: queue the full configured evaluation set for every scene in the active folder.
+- `Templates/Queue-All-Scenes-for-Evaluation.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
 - `Templates/Queue-Current-Scene-for-Evaluation.md`: queue the full configured evaluation set for only the active scene.
 - `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Collect-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
@@ -85,6 +92,13 @@ To enqueue the full scene evaluation queue:
 
 ```sh
 node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault"
+node scheduler/worker.mjs --drain
+```
+
+When `story.root` and `story.folders.scenes` are configured, the scenes folder argument can be omitted:
+
+```sh
+node scheduler/enqueue-scene-evaluations.mjs --vault-root "C:\path\to\your\vault"
 node scheduler/worker.mjs --drain
 ```
 
@@ -105,19 +119,19 @@ node scheduler/worker.mjs --drain
 To enqueue only Reader Awareness:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --preset reader-awareness
+node scheduler/enqueue-scene-evaluations.mjs --vault-root "C:\path\to\your\vault" --preset reader-awareness
 ```
 
 To enqueue only scenes tagged for a pass:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --scene-tag revision-pass-2
+node scheduler/enqueue-scene-evaluations.mjs --vault-root "C:\path\to\your\vault" --scene-tag revision-pass-2
 ```
 
 To enqueue with a named evaluation profile from `config.local.json`:
 
 ```sh
-node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes" --vault-root "C:\path\to\your\vault" --profile harborExperiment
+node scheduler/enqueue-scene-evaluations.mjs --vault-root "C:\path\to\your\vault" --profile harborExperiment
 ```
 
 To enqueue the full configured evaluation set for one scene:
@@ -531,7 +545,7 @@ node scheduler/cancel-job.mjs --latest
 
 ## Scene Evaluation Queueing
 
-Use `Templates/Queue-All-Scenes-for-Evaluation.md` from any scene in the folder you want to process.
+Use `Templates/Queue-All-Scenes-for-Evaluation.md` to process the configured `story.folders.scenes` folder.
 
 Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full configured evaluator set for just the active scene.
 

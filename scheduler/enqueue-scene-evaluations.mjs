@@ -2,7 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { enqueueEvaluateScenesJob } from "./queue.mjs";
-import { getSchedulerConfig, loadConfig } from "../tool-config.mjs";
+import { defaultScenesPath, getSchedulerConfig, loadConfig } from "../tool-config.mjs";
 import { getEvaluationProfile, normalizeFilterConfig } from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,7 +45,7 @@ const positional = process.argv.slice(2).filter((arg, index, args) => {
     previous !== "--scene";
 });
 
-const scenesFolder = positional[0];
+const explicitScenesFolder = positional[0];
 const vaultRoot = readOption("--vault-root");
 const source = readOption("--source") ?? "manual";
 const preset = readOption("--preset") ?? "full";
@@ -99,23 +99,25 @@ function getPresetConfig(name) {
   throw new Error(`Unknown evaluation preset "${name}". Expected "full" or "reader-awareness".`);
 }
 
-if (!scenesFolder) {
-  console.error("Usage: node scheduler/enqueue-scene-evaluations.mjs <scenes-folder> [--vault-root <vault-root>] [--source <source>] [--preset <full|reader-awareness>] [--profile <name>] [--scene <scene-file>] [--scene-tag <tag>] [--exclude-scene-tag <tag>]");
-  process.exit(1);
-}
-
 let presetConfig;
 let profile;
+let config;
 
 try {
+  config = loadConfig(toolRoot);
   presetConfig = getPresetConfig(preset);
-  profile = getEvaluationProfile(loadConfig(toolRoot), evaluationProfile);
+  profile = getEvaluationProfile(config, evaluationProfile);
   normalizeFilterConfig(profile.elementFilters);
   normalizeFilterConfig(mergeFilterConfig(profile.sceneFilters, sceneFilters));
 } catch (error) {
   console.error(error.message);
   process.exit(1);
 }
+
+const resolvedVaultRoot = vaultRoot ? path.resolve(vaultRoot) : path.resolve(toolRoot, "..");
+const scenesFolder = explicitScenesFolder
+  ? path.resolve(explicitScenesFolder)
+  : path.resolve(resolvedVaultRoot, defaultScenesPath(config));
 
 const result = enqueueEvaluateScenesJob({
   toolRoot,

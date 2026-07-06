@@ -24,6 +24,59 @@ export function findAncestorFolder(startPath, folderName) {
 }
 
 /**
+ * Find the story/book root for a note. Prefer the configured story.root when
+ * present, and otherwise fall back to obvious story-folder conventions.
+ */
+export function findStoryRoot(startPath, storyConfig = {}) {
+  let current = path.dirname(startPath);
+  const configuredRoot = String(storyConfig.root ?? "").trim();
+  const configuredRootSegments = configuredRoot
+    ? configuredRoot.split(/[\\/]+/).filter(Boolean)
+    : [];
+  const folders = storyConfig.folders ?? {};
+  const scenesFolder = folders.scenes ?? "Scenes";
+  const metricsFolder = folders.metrics ?? "Metrics";
+
+  if (configuredRoot && path.isAbsolute(configuredRoot)) {
+    return configuredRoot;
+  }
+
+  while (true) {
+    if (configuredRootSegments.length > 0) {
+      const currentSegments = current.split(path.sep).filter(Boolean);
+      const currentSuffix = currentSegments.slice(-configuredRootSegments.length);
+
+      if (currentSuffix.join("/") === configuredRootSegments.join("/")) {
+        return current;
+      }
+    }
+
+    if (path.basename(current) === "POC") {
+      return current;
+    }
+
+    if (path.basename(current) === scenesFolder) {
+      return path.dirname(current);
+    }
+
+    if (
+      fs.existsSync(path.join(current, scenesFolder)) &&
+      fs.existsSync(path.join(current, metricsFolder))
+    ) {
+      return current;
+    }
+
+    const parent = path.dirname(current);
+
+    if (parent === current) {
+      throw new Error("Could not find story root.");
+    }
+
+    current = parent;
+  }
+}
+
+/**
  * Read and parse a markdown file.
  */
 export function readMarkdownFile(filePath) {
@@ -49,6 +102,10 @@ export function readMarkdown(filePath) {
  * Find a file relative to a project root.
  */
 export function projectFile(projectRoot, ...segments) {
+  if (segments.length > 0 && path.isAbsolute(segments[0])) {
+    return path.join(...segments);
+  }
+
   return path.join(projectRoot, ...segments);
 }
 

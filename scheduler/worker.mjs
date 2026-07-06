@@ -3,7 +3,12 @@ import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 
-import { getSchedulerConfig, loadConfig } from "../tool-config.mjs";
+import {
+  defaultChronologyPaths,
+  defaultTruthLedgerPaths,
+  getSchedulerConfig,
+  loadConfig
+} from "../tool-config.mjs";
 import {
   getEvaluationProfile,
   listEligibleMarkdownFiles
@@ -588,9 +593,9 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   const vaultRoot = job.vaultRoot
     ? path.resolve(job.vaultRoot)
     : path.resolve(toolRoot, "..");
-  const configuredPaths = Array.isArray(truthConfig.paths)
+  const configuredPaths = Array.isArray(truthConfig.paths) && truthConfig.paths.length > 0
     ? truthConfig.paths
-    : [];
+    : defaultTruthLedgerPaths(fullConfig);
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
   const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
   const outputPath = resolvePath(
@@ -762,7 +767,11 @@ async function processChronologyIndexJob(jobPath, job, schedulerConfig, paths) {
     : path.resolve(toolRoot, "..");
   const configuredPaths = Array.isArray(job.paths) && job.paths.length > 0
     ? job.paths
-    : (Array.isArray(chronologyConfig.paths) ? chronologyConfig.paths : []);
+    : (
+      Array.isArray(chronologyConfig.paths) && chronologyConfig.paths.length > 0
+        ? chronologyConfig.paths
+        : defaultChronologyPaths(fullConfig)
+    );
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
   const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
   let indexed = 0;

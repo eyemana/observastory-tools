@@ -180,7 +180,9 @@ export function listEligibleMarkdownFiles(folderPath, filters = {}) {
 }
 
 export function listEligibleDefinitions(projectRoot, category, filters = {}) {
-  const folderPath = path.join(projectRoot, category);
+  const folderPath = path.isAbsolute(category)
+    ? category
+    : path.join(projectRoot, category);
 
   return listEligibleMarkdownFiles(folderPath, filters).map((filePath) => {
     const parsed = readMarkdownData(filePath);

@@ -76,6 +76,12 @@ module.exports = async (tp) => {
 
   function loadConfig(toolsRoot) {
     const defaults = {
+      story: {
+        root: "",
+        folders: {
+          scenes: "Scenes"
+        }
+      },
       scheduler: {
         mode: "manual",
         launchWorkerFromTemplater: true,
@@ -95,11 +101,26 @@ module.exports = async (tp) => {
     }
 
     const config = parseJsonWithComments(fs.readFileSync(configPath, "utf8"));
+    config.story = {
+      ...defaults.story,
+      ...(config.story ?? {}),
+      folders: {
+        ...defaults.story.folders,
+        ...(config.story?.folders ?? {})
+      }
+    };
     config.scheduler = {
       ...defaults.scheduler,
       ...(config.scheduler ?? {})
     };
     return config;
+  }
+
+  function configuredScenesFolder(config, basePath) {
+    const storyRoot = config.story?.root ?? "";
+    const scenesFolder = config.story?.folders?.scenes ?? "Scenes";
+
+    return path.join(basePath, storyRoot, scenesFolder);
   }
 
   function readJsonFile(filePath) {
@@ -210,19 +231,13 @@ module.exports = async (tp) => {
     }, intervalMs);
   }
 
-  const activeFile = app.workspace.getActiveFile();
-
-  if (!activeFile) {
-    new Notice("No active file.");
-    return "";
-  }
-
-  const folderPath = activeFile.parent?.path;
-
-  if (!folderPath) {
-    new Notice("Could not determine active folder.");
-    return "";
-  }
+  const basePath = app.vault.adapter.getBasePath();
+  const toolsRoot = path.join(basePath, "observastory-tools");
+  const config = loadConfig(toolsRoot);
+  const scheduler = config.scheduler ?? {};
+  const nodePath = scheduler.nodePath || "node";
+  const absoluteFolderPath = configuredScenesFolder(config, basePath);
+  const folderPath = path.relative(basePath, absoluteFolderPath);
 
   const files = app.vault
     .getMarkdownFiles()
@@ -239,12 +254,6 @@ module.exports = async (tp) => {
     return "";
   }
 
-  const basePath = app.vault.adapter.getBasePath();
-  const toolsRoot = path.join(basePath, "observastory-tools");
-  const config = loadConfig(toolsRoot);
-  const scheduler = config.scheduler ?? {};
-  const nodePath = scheduler.nodePath || "node";
-  const absoluteFolderPath = path.join(basePath, folderPath);
   const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-scene-evaluations.mjs");
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 

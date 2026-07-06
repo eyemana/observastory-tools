@@ -8,6 +8,19 @@ export const defaultConfig = {
     rationaleMode: "paraphrase",
     rationaleSources: ["scene", "definitions", "priorScenes"]
   },
+  story: {
+    root: "",
+    folders: {
+      scenes: "Scenes",
+      characters: "Characters",
+      plotThreads: "Plot Threads",
+      storyEngines: "Story Engines",
+      arcs: "Arcs",
+      metrics: "Metrics",
+      reports: "Reports",
+      notes: "Notes"
+    }
+  },
   standardMetrics: {
     default: {
       rationaleMode: "paraphrase",
@@ -39,13 +52,7 @@ export const defaultConfig = {
     }
   },
   truthLedger: {
-    paths: [
-      "Segments/Tech Tips/Obsidian/POC/Characters",
-      "Segments/Tech Tips/Obsidian/POC/Plot Threads",
-      "Segments/Tech Tips/Obsidian/POC/Story Engines",
-      "Segments/Tech Tips/Obsidian/POC/Arcs",
-      "Segments/Tech Tips/Obsidian/POC/Scenes"
-    ],
+    paths: [],
     outputPath: ".index/truth-ledger.json",
     inference: {
       enabled: true,
@@ -54,9 +61,7 @@ export const defaultConfig = {
     }
   },
   chronology: {
-    paths: [
-      "Segments/Tech Tips/Obsidian/POC/Scenes"
-    ],
+    paths: [],
     sortUnit: "ms",
     generatedPath: "ai.chronology"
   },
@@ -223,4 +228,53 @@ export function loadConfig(toolRoot) {
 
 export function getSchedulerConfig(toolRoot) {
   return loadConfig(toolRoot).scheduler;
+}
+
+export function getStoryConfig(config) {
+  return {
+    ...defaultConfig.story,
+    ...(config.story ?? {}),
+    folders: {
+      ...defaultConfig.story.folders,
+      ...(config.story?.folders ?? {})
+    }
+  };
+}
+
+export function storyRelativePath(config, folderKey) {
+  const story = getStoryConfig(config);
+  const folder = story.folders[folderKey];
+
+  if (!folder) {
+    return story.root || "";
+  }
+
+  if (path.isAbsolute(folder)) {
+    return folder;
+  }
+
+  return story.root
+    ? path.join(story.root, folder)
+    : folder;
+}
+
+export function defaultTruthLedgerPaths(config) {
+  return [
+    "characters",
+    "plotThreads",
+    "storyEngines",
+    "arcs",
+    "notes",
+    "scenes"
+  ].map((folderKey) => storyRelativePath(config, folderKey));
+}
+
+export function defaultChronologyPaths(config) {
+  return [
+    storyRelativePath(config, "scenes")
+  ];
+}
+
+export function defaultScenesPath(config) {
+  return storyRelativePath(config, "scenes");
 }

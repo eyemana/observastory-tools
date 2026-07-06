@@ -4,12 +4,12 @@ import matter from "gray-matter";
 
 import { fileURLToPath } from "url";
 import {
-  findAncestorFolder,
+  findStoryRoot,
   readDefinition,
   formatDefinitions,
   toCamelCase
 } from "../vault-utils.mjs";
-import { loadConfig } from "../tool-config.mjs";
+import { getStoryConfig, loadConfig } from "../tool-config.mjs";
 import { compareChronologySort } from "../chronology/chronology-utils.mjs";
 import {
   applyNameFilters,
@@ -21,6 +21,8 @@ const __filename = fileURLToPath(import.meta.url);
 const evaluatorRoot = path.dirname(__filename);
 const toolRoot = path.join(evaluatorRoot, "..");
 const config = loadConfig(toolRoot);
+const storyConfig = getStoryConfig(config);
+const storyFolders = storyConfig.folders;
 const awarenessConfig = config.awareness ?? {};
 const awarenessRationaleMode = ["off", "extractive", "paraphrase"].includes(
   awarenessConfig.rationaleMode
@@ -71,25 +73,25 @@ if (!filePath || !metricName || !targetName) {
 const targetConfigs = {
   Character: {
     key: "characters",
-    folder: "Characters",
+    folder: storyFolders.characters,
     label: "character",
     pluralLabel: "characters"
   },
   "Plot Thread": {
     key: "plotThreads",
-    folder: "Plot Threads",
+    folder: storyFolders.plotThreads,
     label: "plot thread",
     pluralLabel: "plot threads"
   },
   "Story Engine": {
     key: "storyEngines",
-    folder: "Story Engines",
+    folder: storyFolders.storyEngines,
     label: "story engine",
     pluralLabel: "story engines"
   },
   Arc: {
     key: "arcs",
-    folder: "Arcs",
+    folder: storyFolders.arcs,
     label: "arc",
     pluralLabel: "arcs"
   },
@@ -584,7 +586,7 @@ function writeFileAtomic(targetPath, content) {
 
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
-const pocRoot = findAncestorFolder(filePath, "POC");
+const pocRoot = findStoryRoot(filePath, storyConfig);
 
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
@@ -824,7 +826,7 @@ function buildStandardMetricPrompt(
 ) {
   const metricDefinition = readDefinition(
     pocRoot,
-    "Metrics",
+    storyFolders.metrics,
     metricName
   );
 
@@ -935,7 +937,7 @@ async function evaluateStandardMetric(metricName, targetName) {
 
     const sourceText = standardMetricSourceText(settings, {
       scene: parsed.content,
-      definitions: `${readDefinition(pocRoot, "Metrics", metricName)}\n\n${targetDefinitions}`
+      definitions: `${readDefinition(pocRoot, storyFolders.metrics, metricName)}\n\n${targetDefinitions}`
     });
 
     normalizedScores = targetConfig.sceneOnly

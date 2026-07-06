@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
-import { loadConfig } from "../tool-config.mjs";
+import { defaultTruthLedgerPaths, loadConfig } from "../tool-config.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -563,9 +563,9 @@ async function main() {
     toolRoot,
     readOption("--output") ?? truthConfig.outputPath ?? ".index/truth-ledger.json"
   );
-  const configuredPaths = Array.isArray(truthConfig.paths)
+  const configuredPaths = Array.isArray(truthConfig.paths) && truthConfig.paths.length > 0
     ? truthConfig.paths
-    : [];
+    : defaultTruthLedgerPaths(config);
   const explicitFiles = [...new Set(
     readOptions("--file")
       .map(filePath => resolvePath(vaultRoot, filePath))
