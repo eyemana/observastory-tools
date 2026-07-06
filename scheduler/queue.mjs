@@ -90,6 +90,7 @@ export function enqueueEvaluateScenesJob({
   evaluationProfile,
   sceneFilters,
   evaluations,
+  force = false,
   label = "Full Scene Evaluation"
 }) {
   const schedulerConfig = getSchedulerConfig(toolRoot);
@@ -122,6 +123,7 @@ export function enqueueEvaluateScenesJob({
     vaultRoot: vaultRoot ? path.resolve(vaultRoot) : undefined,
     evaluationProfile,
     sceneFilters,
+    force: force === true,
     evaluations: normalizedEvaluations
   };
 

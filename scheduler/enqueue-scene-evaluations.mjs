@@ -50,6 +50,7 @@ const vaultRoot = readOption("--vault-root");
 const source = readOption("--source") ?? "manual";
 const preset = readOption("--preset") ?? "full";
 const evaluationProfile = readOption("--profile");
+const force = process.argv.includes("--force");
 const sceneFiles = readOptions("--scene");
 const sceneFilters = {
   includeStatuses: readOptions("--scene-status"),
@@ -127,6 +128,7 @@ const result = enqueueEvaluateScenesJob({
   source,
   evaluationProfile: profile.name,
   sceneFilters,
+  force,
   label: presetConfig.label,
   evaluations: presetConfig.evaluations
 });
@@ -135,6 +137,7 @@ console.log(JSON.stringify({
   jobId: result.id,
   preset,
   evaluationProfile: profile.name,
+  force,
   label: presetConfig.label,
   sceneCount: sceneFiles.length || undefined,
   jobPath: result.jobPath,

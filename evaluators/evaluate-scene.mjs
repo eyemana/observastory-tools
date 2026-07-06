@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import crypto from "crypto";
 
 import { fileURLToPath } from "url";
 import {
@@ -33,6 +34,9 @@ const awarenessRationaleSources = Array.isArray(awarenessConfig.rationaleSources
   ? new Set(awarenessConfig.rationaleSources)
   : new Set(["scene", "definitions", "priorScenes"]);
 const standardMetricsConfig = config.standardMetrics ?? {};
+const evaluationCacheConfig = config.evaluationCache ?? {};
+const evaluationCacheEnabled = evaluationCacheConfig.enabled !== false;
+const EVALUATION_INPUT_HASH_VERSION = 1;
 
 function readOption(args, name) {
   const index = args.indexOf(name);
@@ -57,16 +61,21 @@ function removeOption(args, name) {
   ];
 }
 
+function removeFlag(args, name) {
+  return args.filter((arg) => arg !== name);
+}
+
 const args = process.argv.slice(2);
 const filePath = args[0];
 const metricName = args[1];
 const evaluationProfileName = readOption(args, "--profile");
-const targetArgs = removeOption(args.slice(2), "--profile");
+const forceEvaluation = args.includes("--force");
+const targetArgs = removeFlag(removeOption(args.slice(2), "--profile"), "--force");
 const targetName = targetArgs.join(" ");
 const evaluationProfile = getEvaluationProfile(config, evaluationProfileName);
 
 if (!filePath || !metricName || !targetName) {
-  console.error("Usage: node evaluate-scene.mjs <file> <metricName> <targetName>");
+  console.error("Usage: node evaluate-scene.mjs <file> <metricName> <targetName> [--profile <name>] [--force]");
   process.exit(1);
 }
 
@@ -591,6 +600,66 @@ const pocRoot = findStoryRoot(filePath, storyConfig);
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 
+function evaluationInputHash(metricName, targetName, prompt) {
+  const payload = {
+    version: EVALUATION_INPUT_HASH_VERSION,
+    model: config.model,
+    metricName,
+    targetName,
+    profile: evaluationProfile.name,
+    prompt
+  };
+
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(payload))
+    .digest("hex");
+}
+
+function hasExistingEvaluation(metricKey, targetKey) {
+  const value = parsed.data.ai?.[metricKey]?.[targetKey];
+
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  return Object.keys(value).length > 0;
+}
+
+function shouldSkipEvaluation(metricKey, targetKey, inputHash) {
+  if (!evaluationCacheEnabled || forceEvaluation) {
+    return false;
+  }
+
+  if (!hasExistingEvaluation(metricKey, targetKey)) {
+    return false;
+  }
+
+  const metadata = parsed.data.ai?.[metricKey]?.evaluationInputs?.[targetKey];
+
+  return metadata?.version === EVALUATION_INPUT_HASH_VERSION &&
+    metadata?.inputHash === inputHash;
+}
+
+function markEvaluationInput(metricKey, targetKey, inputHash) {
+  parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
+  parsed.data.ai[metricKey].evaluationInputs =
+    parsed.data.ai[metricKey].evaluationInputs ?? {};
+  parsed.data.ai[metricKey].evaluationInputs[targetKey] = {
+    version: EVALUATION_INPUT_HASH_VERSION,
+    inputHash,
+    model: config.model,
+    profile: evaluationProfile.name,
+    metric: metricName,
+    target: targetName,
+    updated: new Date().toISOString()
+  };
+}
+
+function logSkippedEvaluation(metricName, targetName) {
+  console.log(`Skipped unchanged evaluation: ${metricName} / ${targetName} / ${path.basename(filePath)}`);
+}
+
 function explicitTargetField(prefix, targetConfig) {
   return `${prefix}${targetConfig.key[0].toUpperCase()}${targetConfig.key.slice(1)}`;
 }
@@ -909,6 +978,19 @@ async function evaluateStandardMetric(metricName, targetName) {
   const targetDefinitions = targetConfig.sceneOnly
     ? ""
     : formatDefinitions(targetDefinitionEntries);
+  const prompt = buildStandardMetricPrompt(
+    metricName,
+    targetConfig,
+    targetNames,
+    targetDefinitions,
+    settings
+  );
+  const inputHash = evaluationInputHash(metricName, targetName, prompt);
+
+  if (shouldSkipEvaluation(metricKey, targetConfig.key, inputHash)) {
+    logSkippedEvaluation(metricName, targetName);
+    return false;
+  }
 
   let normalizedScores;
 
@@ -925,14 +1007,6 @@ async function evaluateStandardMetric(metricName, targetName) {
       normalizedScores.evidence = [];
     }
   } else {
-    const prompt = buildStandardMetricPrompt(
-      metricName,
-      targetConfig,
-      targetNames,
-      targetDefinitions,
-      settings
-    );
-
     const { rawResponse, parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
     const sourceText = standardMetricSourceText(settings, {
@@ -976,7 +1050,9 @@ async function evaluateStandardMetric(metricName, targetName) {
     parsed.data.ai[metricKey][targetConfig.key][name] = value;
   }
 
+  markEvaluationInput(metricKey, targetConfig.key, inputHash);
   parsed.data.ai[metricKey].updated = new Date().toISOString();
+  return true;
 }
 
 function buildCharacterAwarenessPrompt(
@@ -1077,6 +1153,26 @@ async function evaluateCharacterAwareness(targetName) {
   const plotThreadNames = plotThreadDefinitionEntries.map((definition) => definition.name);
   const characterDefinitions = formatDefinitions(characterDefinitionEntries);
   const plotThreadDefinitions = formatDefinitions(plotThreadDefinitionEntries);
+  const priorChronologyContext = formatPriorChronologyContext(
+    listPriorChronologyScenes(filePath, parsed)
+  );
+  const prompt = buildCharacterAwarenessPrompt(
+    characterNames,
+    plotThreadNames,
+    characterDefinitions,
+    plotThreadDefinitions,
+    priorChronologyContext
+  );
+  const inputHash = evaluationInputHash(
+    "Character Awareness",
+    targetName,
+    prompt
+  );
+
+  if (shouldSkipEvaluation("characterAwareness", "plotThreads", inputHash)) {
+    logSkippedEvaluation("Character Awareness", targetName);
+    return false;
+  }
 
   let plotThreads;
 
@@ -1088,17 +1184,6 @@ async function evaluateCharacterAwareness(targetName) {
       awarenessSourceText({ scene: parsed.content })
     );
   } else {
-    const priorChronologyContext = formatPriorChronologyContext(
-      listPriorChronologyScenes(filePath, parsed)
-    );
-    const prompt = buildCharacterAwarenessPrompt(
-      characterNames,
-      plotThreadNames,
-      characterDefinitions,
-      plotThreadDefinitions,
-      priorChronologyContext
-    );
-
     const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
     plotThreads = normalizeCharacterAwarenessMap(
@@ -1118,7 +1203,9 @@ async function evaluateCharacterAwareness(targetName) {
 
   parsed.data.ai.characterAwareness = parsed.data.ai.characterAwareness ?? {};
   parsed.data.ai.characterAwareness.plotThreads = plotThreads;
+  markEvaluationInput("characterAwareness", "plotThreads", inputHash);
   parsed.data.ai.characterAwareness.updated = new Date().toISOString();
+  return true;
 }
 
 function getReaderAwarenessGuidance(targetConfig) {
@@ -1266,6 +1353,21 @@ async function evaluateReaderAwareness(targetName) {
   const targetDefinitionEntries = getTargetDefinitions(targetConfig);
   const targetNames = targetDefinitionEntries.map((definition) => definition.name);
   const targetDefinitions = formatDefinitions(targetDefinitionEntries);
+  const priorSceneContext = formatPriorSceneContext(
+    listPriorScenes(filePath, parsed)
+  );
+  const prompt = buildReaderAwarenessPrompt(
+    targetConfig,
+    targetNames,
+    targetDefinitions,
+    priorSceneContext
+  );
+  const inputHash = evaluationInputHash("Reader Awareness", targetName, prompt);
+
+  if (shouldSkipEvaluation("readerAwareness", targetConfig.key, inputHash)) {
+    logSkippedEvaluation("Reader Awareness", targetName);
+    return false;
+  }
 
   let targetScores;
 
@@ -1276,16 +1378,6 @@ async function evaluateReaderAwareness(targetName) {
       awarenessSourceText({ scene: parsed.content })
     );
   } else {
-    const priorSceneContext = formatPriorSceneContext(
-      listPriorScenes(filePath, parsed)
-    );
-    const prompt = buildReaderAwarenessPrompt(
-      targetConfig,
-      targetNames,
-      targetDefinitions,
-      priorSceneContext
-    );
-
     const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
     targetScores = normalizeReaderAwarenessMap(
@@ -1301,16 +1393,22 @@ async function evaluateReaderAwareness(targetName) {
 
   parsed.data.ai.readerAwareness = parsed.data.ai.readerAwareness ?? {};
   parsed.data.ai.readerAwareness[targetConfig.key] = targetScores;
+  markEvaluationInput("readerAwareness", targetConfig.key, inputHash);
   parsed.data.ai.readerAwareness.updated = new Date().toISOString();
+  return true;
 }
+
+let updatedEvaluation;
 
 if (isCharacterAwarenessMetric(metricName)) {
-  await evaluateCharacterAwareness(targetName);
+  updatedEvaluation = await evaluateCharacterAwareness(targetName);
 } else if (isReaderAwarenessMetric(metricName)) {
-  await evaluateReaderAwareness(targetName);
+  updatedEvaluation = await evaluateReaderAwareness(targetName);
 } else {
-  await evaluateStandardMetric(metricName, targetName);
+  updatedEvaluation = await evaluateStandardMetric(metricName, targetName);
 }
 
-const updated = matter.stringify(parsed.content, parsed.data);
-writeFileAtomic(filePath, updated);
+if (updatedEvaluation) {
+  const updated = matter.stringify(parsed.content, parsed.data);
+  writeFileAtomic(filePath, updated);
+}

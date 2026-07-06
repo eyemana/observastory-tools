@@ -129,7 +129,7 @@ function acquireWorkerLock(paths) {
   return null;
 }
 
-async function runEvaluator(filePath, metric, target, profileName, logPath, paths, jobId) {
+async function runEvaluator(filePath, metric, target, profileName, logPath, paths, jobId, force = false) {
   const args = [
     evaluatorPath,
     filePath,
@@ -139,6 +139,10 @@ async function runEvaluator(filePath, metric, target, profileName, logPath, path
 
   if (profileName) {
     args.push("--profile", profileName);
+  }
+
+  if (force) {
+    args.push("--force");
   }
 
   return new Promise((resolve) => {
@@ -526,7 +530,8 @@ async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
         profile.name,
         logPath,
         paths,
-        job.id
+        job.id,
+        job.force === true
       );
 
       if (result.canceled) {

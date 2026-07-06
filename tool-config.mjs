@@ -85,6 +85,9 @@ export const defaultConfig = {
       default: {}
     }
   },
+  evaluationCache: {
+    enabled: true
+  },
   scheduler: {
     mode: "manual",
     queueDir: ".queue",

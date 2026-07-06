@@ -486,6 +486,9 @@ The config loader accepts JSON with comments, so `//` and `/* ... */` comments a
 
 ```json
 {
+  "evaluationCache": {
+    "enabled": true
+  },
   "scheduler": {
     "mode": "manual",
     "throttleMs": 5000,
@@ -508,6 +511,8 @@ The scheduler has one worker and multiple job types:
 `manual` mode is the default. Templater queues the requested job and starts a worker that drains queued jobs, using `throttleMs` between evaluator calls, Truth Ledger note crawls, or Chronology Index scene updates.
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
+
+Scene evaluation jobs are incremental by default. Each evaluator stores an input fingerprint for the metric/target axis it writes, then skips unchanged reruns without calling the model or rewriting the scene note. The fingerprint is based on the evaluator prompt inputs, including the scene text, selected definitions, relevant prior-scene context for awareness metrics, model, and evaluation profile. Set `evaluationCache.enabled` to `false`, or pass `--force` to `scheduler/enqueue-scene-evaluations.mjs` or `evaluators/evaluate-scene.mjs`, when you intentionally want a full rerun.
 
 `statusNoticeIntervalMs` controls how often Obsidian checks the job file and shows progress notices. Set `monitorFromTemplater` to `false` if you only want logs and job files.
 
@@ -558,6 +563,8 @@ node scheduler/cancel-job.mjs --latest
 Use `Templates/Queue-All-Scenes-for-Evaluation.md` to process the configured `story.folders.scenes` folder.
 
 Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full configured evaluator set for just the active scene.
+
+Queued scene evaluations skip unchanged metric/target axes by default. A skipped evaluation is counted as a successful evaluator process in the job log, but it does not call the model and does not rewrite the scene file.
 
 By default, the Templater script:
 

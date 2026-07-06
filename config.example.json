@@ -138,6 +138,14 @@
     }
   },
 
+  "evaluationCache": {
+    // When enabled, scene evaluators store an input fingerprint for each
+    // metric/target axis and skip unchanged reruns without calling the model
+    // or rewriting the scene file. Use --force on enqueue-scene-evaluations.mjs
+    // or evaluate-scene.mjs to intentionally rerun unchanged evaluations.
+    "enabled": true
+  },
+
   "scheduler": {
     // How jobs are picked up after Templater queues them.
     // "manual": Templater queues a job and starts a worker that drains the queue, then exits.
