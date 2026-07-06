@@ -52,6 +52,7 @@ export const defaultConfig = {
     }
   },
   truthLedger: {
+    folders: ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
     paths: [],
     outputPath: ".index/truth-ledger.json",
     inference: {
@@ -61,6 +62,7 @@ export const defaultConfig = {
     }
   },
   chronology: {
+    folders: ["scenes"],
     paths: [],
     sortUnit: "ms",
     generatedPath: "ai.chronology"
@@ -246,7 +248,8 @@ export function storyRelativePath(config, folderKey) {
   const folder = story.folders[folderKey];
 
   if (!folder) {
-    return story.root || "";
+    const configuredKeys = Object.keys(story.folders).sort().join(", ");
+    throw new Error(`Unknown story folder key "${folderKey}". Configured story.folders keys: ${configuredKeys}`);
   }
 
   if (path.isAbsolute(folder)) {
@@ -258,21 +261,26 @@ export function storyRelativePath(config, folderKey) {
     : folder;
 }
 
+function configuredSectionPaths(config, sectionName, defaultFolderKeys) {
+  const sectionConfig = config[sectionName] ?? {};
+
+  if (Array.isArray(sectionConfig.paths) && sectionConfig.paths.length > 0) {
+    return sectionConfig.paths;
+  }
+
+  const folderKeys = Array.isArray(sectionConfig.folders) && sectionConfig.folders.length > 0
+    ? sectionConfig.folders
+    : defaultFolderKeys;
+
+  return folderKeys.map((folderKey) => storyRelativePath(config, folderKey));
+}
+
 export function defaultTruthLedgerPaths(config) {
-  return [
-    "characters",
-    "plotThreads",
-    "storyEngines",
-    "arcs",
-    "notes",
-    "scenes"
-  ].map((folderKey) => storyRelativePath(config, folderKey));
+  return configuredSectionPaths(config, "truthLedger", defaultConfig.truthLedger.folders);
 }
 
 export function defaultChronologyPaths(config) {
-  return [
-    storyRelativePath(config, "scenes")
-  ];
+  return configuredSectionPaths(config, "chronology", defaultConfig.chronology.folders);
 }
 
 export function defaultScenesPath(config) {

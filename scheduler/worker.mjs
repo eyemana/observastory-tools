@@ -593,9 +593,7 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   const vaultRoot = job.vaultRoot
     ? path.resolve(job.vaultRoot)
     : path.resolve(toolRoot, "..");
-  const configuredPaths = Array.isArray(truthConfig.paths) && truthConfig.paths.length > 0
-    ? truthConfig.paths
-    : defaultTruthLedgerPaths(fullConfig);
+  const configuredPaths = defaultTruthLedgerPaths(fullConfig);
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
   const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
   const outputPath = resolvePath(
@@ -761,17 +759,12 @@ async function processChronologyIndexJob(jobPath, job, schedulerConfig, paths) {
   const logPath = path.join(paths.logsDir, `${job.id}.log`);
   const throttleMs = Math.max(0, Number(schedulerConfig.throttleMs) || 0);
   const fullConfig = loadConfig(toolRoot);
-  const chronologyConfig = fullConfig.chronology ?? {};
   const vaultRoot = job.vaultRoot
     ? path.resolve(job.vaultRoot)
     : path.resolve(toolRoot, "..");
   const configuredPaths = Array.isArray(job.paths) && job.paths.length > 0
     ? job.paths
-    : (
-      Array.isArray(chronologyConfig.paths) && chronologyConfig.paths.length > 0
-        ? chronologyConfig.paths
-        : defaultChronologyPaths(fullConfig)
-    );
+    : defaultChronologyPaths(fullConfig);
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
   const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
   let indexed = 0;

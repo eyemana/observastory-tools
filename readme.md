@@ -69,7 +69,18 @@ For the tutorial, the story config looks like this:
 }
 ```
 
-Leave `truthLedger.paths` and `chronology.paths` empty unless you want to override the tutorial defaults. With empty paths, the Truth Ledger scans the configured story folders, and the Chronology Index scans the configured scenes folder.
+Crawler settings refer to those same folder keys:
+
+```json
+"truthLedger": {
+  "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"]
+},
+"chronology": {
+  "folders": ["scenes"]
+}
+```
+
+That keeps folder names in one place: change `story.folders.scenes`, and every tool using the `scenes` key follows it.
 
 ## Quick Start
 
@@ -153,7 +164,6 @@ Scene notes are the canonical evaluated units. The evaluator scores every eligib
 ```yaml
 ---
 name: Inventory Day
-type: Scene
 chapter_order: 1
 scene_order: 1
 chronology_label: "July 28, 2026, 7:15:03.192 PM"

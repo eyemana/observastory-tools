@@ -563,9 +563,7 @@ async function main() {
     toolRoot,
     readOption("--output") ?? truthConfig.outputPath ?? ".index/truth-ledger.json"
   );
-  const configuredPaths = Array.isArray(truthConfig.paths) && truthConfig.paths.length > 0
-    ? truthConfig.paths
-    : defaultTruthLedgerPaths(config);
+  const configuredPaths = defaultTruthLedgerPaths(config);
   const explicitFiles = [...new Set(
     readOptions("--file")
       .map(filePath => resolvePath(vaultRoot, filePath))
