@@ -35,6 +35,63 @@
       "metrics": "Metrics",
       "reports": "Reports",
       "notes": "Notes"
+    },
+
+    // Entity types normalize writer-facing folders into evaluator targets.
+    // folderKeys refer to story.folders entries. Use paths for explicit folders
+    // when a project spreads one entity type across multiple places.
+    "entityTypes": {
+      "characters": {
+        "target": "Character",
+        "folderKeys": ["characters"],
+        "label": "character",
+        "pluralLabel": "characters"
+      },
+      "plotThreads": {
+        "target": "Plot Thread",
+        "folderKeys": ["plotThreads"],
+        "label": "plot thread",
+        "pluralLabel": "plot threads"
+      },
+      "storyEngines": {
+        "target": "Story Engine",
+        "folderKeys": ["storyEngines"],
+        "label": "story engine",
+        "pluralLabel": "story engines"
+      },
+      "arcs": {
+        "target": "Arc",
+        "folderKeys": ["arcs"],
+        "label": "arc",
+        "pluralLabel": "arcs"
+      }
+    }
+  },
+
+  // Project mode calibrates evaluator confidence without changing author notes.
+  // "outline" is conservative for early sketches. "draft" is the normal default.
+  "projectMode": "draft",
+
+  "calibration": {
+    "modes": {
+      "outline": {
+        "guidance": "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
+        "scoreCeilings": {
+          "Resolution": 3.5
+        }
+      },
+      "draft": {
+        "guidance": "",
+        "scoreCeilings": {}
+      },
+      "revision": {
+        "guidance": "",
+        "scoreCeilings": {}
+      },
+      "final": {
+        "guidance": "",
+        "scoreCeilings": {}
+      }
     }
   },
 

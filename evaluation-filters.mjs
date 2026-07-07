@@ -168,6 +168,22 @@ export function listEligibleDefinitions(projectRoot, category, filters = {}) {
   });
 }
 
+export function listEligibleDefinitionsFromPaths(projectRoot, folderPaths, filters = {}) {
+  const seen = new Map();
+
+  for (const folderPath of asArray(folderPaths)) {
+    const definitions = listEligibleDefinitions(projectRoot, folderPath, filters);
+
+    for (const definition of definitions) {
+      if (!seen.has(definition.name)) {
+        seen.set(definition.name, definition);
+      }
+    }
+  }
+
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function applyNameFilters(names, includeNames = [], excludeNames = []) {
   const include = new Set(asArray(includeNames).map(String));
   const exclude = new Set(asArray(excludeNames).map(String));

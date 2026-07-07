@@ -19,6 +19,56 @@ export const defaultConfig = {
       metrics: "Metrics",
       reports: "Reports",
       notes: "Notes"
+    },
+    entityTypes: {
+      characters: {
+        target: "Character",
+        folderKeys: ["characters"],
+        label: "character",
+        pluralLabel: "characters"
+      },
+      plotThreads: {
+        target: "Plot Thread",
+        folderKeys: ["plotThreads"],
+        label: "plot thread",
+        pluralLabel: "plot threads"
+      },
+      storyEngines: {
+        target: "Story Engine",
+        folderKeys: ["storyEngines"],
+        label: "story engine",
+        pluralLabel: "story engines"
+      },
+      arcs: {
+        target: "Arc",
+        folderKeys: ["arcs"],
+        label: "arc",
+        pluralLabel: "arcs"
+      }
+    }
+  },
+  projectMode: "draft",
+  calibration: {
+    modes: {
+      outline: {
+        guidance:
+          "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
+        scoreCeilings: {
+          Resolution: 3.5
+        }
+      },
+      draft: {
+        guidance: "",
+        scoreCeilings: {}
+      },
+      revision: {
+        guidance: "",
+        scoreCeilings: {}
+      },
+      final: {
+        guidance: "",
+        scoreCeilings: {}
+      }
     }
   },
   standardMetrics: {
@@ -242,8 +292,24 @@ export function getStoryConfig(config) {
     folders: {
       ...defaultConfig.story.folders,
       ...(config.story?.folders ?? {})
+    },
+    entityTypes: {
+      ...defaultConfig.story.entityTypes,
+      ...(config.story?.entityTypes ?? {})
     }
   };
+}
+
+export function storyPath(config, configuredPath) {
+  const story = getStoryConfig(config);
+
+  if (path.isAbsolute(configuredPath)) {
+    return configuredPath;
+  }
+
+  return story.root
+    ? path.join(story.root, configuredPath)
+    : configuredPath;
 }
 
 export function storyRelativePath(config, folderKey) {
@@ -255,13 +321,52 @@ export function storyRelativePath(config, folderKey) {
     throw new Error(`Unknown story folder key "${folderKey}". Configured story.folders keys: ${configuredKeys}`);
   }
 
-  if (path.isAbsolute(folder)) {
-    return folder;
+  return storyPath(config, folder);
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== null && item !== undefined);
   }
 
-  return story.root
-    ? path.join(story.root, folder)
-    : folder;
+  if (value === null || value === undefined || value === "") {
+    return [];
+  }
+
+  return [value];
+}
+
+export function getStoryEntityTypes(config) {
+  return getStoryConfig(config).entityTypes;
+}
+
+export function storyEntityTypePaths(config, entityTypeKey) {
+  const story = getStoryConfig(config);
+  const entityTypes = getStoryEntityTypes(config);
+  const entityType = entityTypes[entityTypeKey];
+
+  if (!entityType) {
+    const configuredKeys = Object.keys(entityTypes).sort().join(", ");
+    throw new Error(`Unknown story entity type "${entityTypeKey}". Configured story.entityTypes keys: ${configuredKeys}`);
+  }
+
+  const explicitPaths = asArray(entityType.paths);
+
+  if (explicitPaths.length > 0) {
+    return explicitPaths.map((configuredPath) => String(configuredPath));
+  }
+
+  const folderKeys = asArray(entityType.folderKeys);
+  return folderKeys.map((folderKey) => {
+    const folder = story.folders[folderKey];
+
+    if (!folder) {
+      const configuredKeys = Object.keys(story.folders).sort().join(", ");
+      throw new Error(`Unknown story folder key "${folderKey}". Configured story.folders keys: ${configuredKeys}`);
+    }
+
+    return folder;
+  });
 }
 
 function configuredSectionPaths(config, sectionName, defaultFolderKeys) {

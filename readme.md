@@ -65,9 +65,37 @@ For the tutorial, the story config looks like this:
     "metrics": "Metrics",
     "reports": "Reports",
     "notes": "Notes"
+  },
+  "entityTypes": {
+    "characters": {
+      "target": "Character",
+      "folderKeys": ["characters"],
+      "label": "character",
+      "pluralLabel": "characters"
+    },
+    "plotThreads": {
+      "target": "Plot Thread",
+      "folderKeys": ["plotThreads"],
+      "label": "plot thread",
+      "pluralLabel": "plot threads"
+    },
+    "storyEngines": {
+      "target": "Story Engine",
+      "folderKeys": ["storyEngines"],
+      "label": "story engine",
+      "pluralLabel": "story engines"
+    },
+    "arcs": {
+      "target": "Arc",
+      "folderKeys": ["arcs"],
+      "label": "arc",
+      "pluralLabel": "arcs"
+    }
   }
 }
 ```
+
+`story.folders` names the writer-facing folders. `story.entityTypes` tells evaluators which configured folders count as characters, plot threads, story engines, and arcs. If a project spreads one entity type across multiple places, set `folderKeys` to multiple folder keys or use explicit `paths`.
 
 Crawler settings refer to those same folder keys:
 
@@ -81,6 +109,24 @@ Crawler settings refer to those same folder keys:
 ```
 
 That keeps folder names in one place: change `story.folders.scenes`, and every tool using the `scenes` key follows it.
+
+Project calibration is controlled separately:
+
+```json
+"projectMode": "draft",
+"calibration": {
+  "modes": {
+    "outline": {
+      "guidance": "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
+      "scoreCeilings": {
+        "Resolution": 3.5
+      }
+    }
+  }
+}
+```
+
+Set `projectMode` to `outline` when you are sketching scenes and want conservative standard-metric charts. Score ceilings use the evaluator's 0-10 scale, so `Resolution: 3.5` appears as roughly 35% in reports that display percentages. Default `draft` mode does not cap scores.
 
 ## Quick Start
 

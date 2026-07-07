@@ -10,12 +10,16 @@ import {
   formatDefinitions,
   toCamelCase
 } from "../vault-utils.mjs";
-import { getStoryConfig, loadConfig } from "../tool-config.mjs";
+import {
+  getStoryConfig,
+  loadConfig,
+  storyEntityTypePaths
+} from "../tool-config.mjs";
 import { compareChronologySort } from "../chronology/chronology-utils.mjs";
 import {
   applyNameFilters,
   getEvaluationProfile,
-  listEligibleDefinitions
+  listEligibleDefinitionsFromPaths
 } from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +40,12 @@ const awarenessRationaleSources = Array.isArray(awarenessConfig.rationaleSources
 const standardMetricsConfig = config.standardMetrics ?? {};
 const evaluationCacheConfig = config.evaluationCache ?? {};
 const evaluationCacheEnabled = evaluationCacheConfig.enabled !== false;
+const projectMode = typeof config.projectMode === "string"
+  ? config.projectMode
+  : typeof config.project?.mode === "string"
+    ? config.project.mode
+    : "draft";
+const calibrationModeConfig = config.calibration?.modes?.[projectMode] ?? {};
 const EVALUATION_INPUT_HASH_VERSION = 1;
 
 function readOption(args, name) {
@@ -79,39 +89,36 @@ if (!filePath || !metricName || !targetName) {
   process.exit(1);
 }
 
-const targetConfigs = {
-  Character: {
-    key: "characters",
-    folder: storyFolders.characters,
-    label: "character",
-    pluralLabel: "characters"
-  },
-  "Plot Thread": {
-    key: "plotThreads",
-    folder: storyFolders.plotThreads,
-    label: "plot thread",
-    pluralLabel: "plot threads"
-  },
-  "Story Engine": {
-    key: "storyEngines",
-    folder: storyFolders.storyEngines,
-    label: "story engine",
-    pluralLabel: "story engines"
-  },
-  Arc: {
-    key: "arcs",
-    folder: storyFolders.arcs,
-    label: "arc",
-    pluralLabel: "arcs"
-  },
-  Scene: {
+function buildTargetConfigs() {
+  const targets = {};
+
+  for (const [key, entityType] of Object.entries(storyConfig.entityTypes ?? {})) {
+    if (!entityType.target) {
+      continue;
+    }
+
+    targets[entityType.target] = {
+      key,
+      entityType: key,
+      paths: storyEntityTypePaths(config, key),
+      label: entityType.label ?? key,
+      pluralLabel: entityType.pluralLabel ?? key
+    };
+  }
+
+  targets.Scene = {
     key: "scene",
-    folder: null,
+    entityType: "scene",
+    paths: [],
     label: "scene",
     pluralLabel: "scene",
     sceneOnly: true
-  }
-};
+  };
+
+  return targets;
+}
+
+const targetConfigs = buildTargetConfigs();
 
 function getTargetConfig(targetName) {
   const normalized = targetName.trim();
@@ -536,6 +543,85 @@ function normalizeSceneOnlyScore(bucket, label, rawResponse, settings, sourceTex
   return normalizeStandardMetricEntry(bucket, settings, sourceText);
 }
 
+function configuredScoreCeiling(metricName) {
+  const ceilings = calibrationModeConfig.scoreCeilings ?? {};
+  const candidates = [
+    metricName,
+    toCamelCase(metricName),
+    metricName.toLowerCase()
+  ];
+
+  for (const key of candidates) {
+    const value = Number(ceilings[key]);
+
+    if (Number.isFinite(value)) {
+      return clampNumber(value, 0, 10, 10);
+    }
+  }
+
+  return null;
+}
+
+function calibrationPromptGuidance(metricName) {
+  const ceiling = configuredScoreCeiling(metricName);
+  const guidance =
+    typeof calibrationModeConfig.guidance === "string"
+      ? calibrationModeConfig.guidance.trim()
+      : "";
+
+  if (!guidance && ceiling === null) {
+    return "";
+  }
+
+  const lines = [
+    `Project mode: ${projectMode}.`
+  ];
+
+  if (guidance) {
+    lines.push(guidance);
+  }
+
+  if (ceiling !== null) {
+    lines.push(
+      `Calibration cap: do not score ${metricName} above ${ceiling} on the 0-10 scale in this mode unless the configured cap is changed.`
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function applyCalibrationToMetricEntry(entry, metricName) {
+  const ceiling = configuredScoreCeiling(metricName);
+
+  if (ceiling === null || !entry || typeof entry.scene !== "number" || entry.scene <= ceiling) {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    rawScene: entry.scene,
+    scene: ceiling,
+    calibration: {
+      mode: projectMode,
+      cappedAt: ceiling
+    }
+  };
+}
+
+function applyCalibrationToStandardScores(scores, metricName) {
+  const calibrated = applyCalibrationToMetricEntry(scores, metricName);
+  const items = {};
+
+  for (const [name, value] of Object.entries(scores.items ?? {})) {
+    items[name] = applyCalibrationToMetricEntry(value, metricName);
+  }
+
+  return {
+    ...calibrated,
+    items
+  };
+}
+
 function normalizeCharacterAwarenessMap(scores, plotThreadNames, characterNames, sourceText) {
   const normalized = {};
 
@@ -656,6 +742,63 @@ function markEvaluationInput(metricKey, targetKey, inputHash) {
   };
 }
 
+function standardMetricObservationPayload(metricName, entry, settings, targetConfig, entityName) {
+  const payload = {
+    entity: {
+      name: entityName,
+      type: targetConfig.entityType,
+      target: targetConfig.label
+    },
+    dimension: toCamelCase(metricName),
+    metric: metricName,
+    value: entry.scene,
+    scale: {
+      min: 0,
+      max: 10
+    },
+    projectMode,
+    profile: evaluationProfile.name,
+    model: config.model,
+    updated: new Date().toISOString()
+  };
+
+  if (typeof entry.rawScene === "number") {
+    payload.rawValue = entry.rawScene;
+    payload.calibration = entry.calibration;
+  }
+
+  if (settings.rationaleMode === "paraphrase") {
+    payload.rationale = entry[settings.rationaleField] ?? "";
+  } else if (settings.rationaleMode === "extractive") {
+    payload.evidence = entry.evidence ?? [];
+  }
+
+  return payload;
+}
+
+function writeStandardMetricObservations(metricName, targetConfig, scores, settings) {
+  const dimension = toCamelCase(metricName);
+  parsed.data.ai.observations = parsed.data.ai.observations ?? {};
+  parsed.data.ai.observations[targetConfig.key] =
+    parsed.data.ai.observations[targetConfig.key] ?? {};
+
+  if (targetConfig.sceneOnly) {
+    const sceneName = path.basename(filePath, ".md");
+    parsed.data.ai.observations[targetConfig.key][sceneName] =
+      parsed.data.ai.observations[targetConfig.key][sceneName] ?? {};
+    parsed.data.ai.observations[targetConfig.key][sceneName][dimension] =
+      standardMetricObservationPayload(metricName, scores, settings, targetConfig, sceneName);
+    return;
+  }
+
+  for (const [entityName, entry] of Object.entries(scores.items ?? {})) {
+    parsed.data.ai.observations[targetConfig.key][entityName] =
+      parsed.data.ai.observations[targetConfig.key][entityName] ?? {};
+    parsed.data.ai.observations[targetConfig.key][entityName][dimension] =
+      standardMetricObservationPayload(metricName, entry, settings, targetConfig, entityName);
+  }
+}
+
 function logSkippedEvaluation(metricName, targetName) {
   console.log(`Skipped unchanged evaluation: ${metricName} / ${targetName} / ${path.basename(filePath)}`);
 }
@@ -669,9 +812,9 @@ function getTargetDefinitions(targetConfig) {
     return [];
   }
 
-  const definitions = listEligibleDefinitions(
+  const definitions = listEligibleDefinitionsFromPaths(
     pocRoot,
-    targetConfig.folder,
+    targetConfig.paths,
     evaluationProfile.elementFilters
   );
   const names = definitions.map((definition) => definition.name);
@@ -895,6 +1038,7 @@ function buildStandardMetricPrompt(
     storyFolders.metrics,
     metricName
   );
+  const calibrationGuidance = calibrationPromptGuidance(metricName);
 
   if (targetConfig.sceneOnly) {
     return `
@@ -906,6 +1050,8 @@ Do not include markdown.
 
 Score only this scene.
 Do not use other scenes, truth ledgers, chronology, or external story context.
+
+${calibrationGuidance}
 
 ${standardMetricRationaleInstructions(settings)}
 
@@ -940,6 +1086,8 @@ Use EXACTLY the listed names as JSON keys.
 Do not omit any listed item.
 Do not add unlisted items.
 If an item is barely present, still include it with a low score and configured rationale output.
+
+${calibrationGuidance}
 
 ${standardMetricRationaleInstructions(settings)}
 
@@ -1029,6 +1177,8 @@ async function evaluateStandardMetric(metricName, targetName) {
       );
   }
 
+  normalizedScores = applyCalibrationToStandardScores(normalizedScores, metricName);
+
   parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
 
   parsed.data.ai[metricKey][targetConfig.key] = {
@@ -1047,6 +1197,7 @@ async function evaluateStandardMetric(metricName, targetName) {
     parsed.data.ai[metricKey][targetConfig.key][name] = value;
   }
 
+  writeStandardMetricObservations(metricName, targetConfig, normalizedScores, settings);
   markEvaluationInput(metricKey, targetConfig.key, inputHash);
   parsed.data.ai[metricKey].updated = new Date().toISOString();
   return true;
