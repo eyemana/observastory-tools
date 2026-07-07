@@ -138,7 +138,7 @@
     // These names come from story.folders above, keeping the tutorial paths in one place.
     "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
 
-    // Generated JSON index used by reports now and evaluator grounding in a later pass.
+    // Generated JSON index used by reports and awareness evaluator grounding.
     // Relative paths are resolved from the observastory-tools folder.
     "outputPath": ".index/truth-ledger.json",
 

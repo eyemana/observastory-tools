@@ -789,6 +789,7 @@ function writeFileAtomic(targetPath, content) {
 const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 const pocRoot = findStoryRoot(filePath, storyConfig);
+const vaultRoot = path.resolve(toolRoot, "..");
 
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
@@ -1104,6 +1105,204 @@ function formatLinkedTargetEntries(entries) {
   return JSON.stringify(entries, null, 2);
 }
 
+function normalizePathKey(value) {
+  return String(value ?? "").replace(/\\/g, "/").toLowerCase();
+}
+
+function relativeVaultPath(absolutePath) {
+  return path.relative(vaultRoot, absolutePath);
+}
+
+let truthLedgerCache;
+
+function readTruthLedgerIndex() {
+  if (truthLedgerCache !== undefined) {
+    return truthLedgerCache;
+  }
+
+  const outputPath = config.truthLedger?.outputPath ?? ".index/truth-ledger.json";
+  const ledgerPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.join(toolRoot, outputPath);
+
+  if (!fs.existsSync(ledgerPath)) {
+    truthLedgerCache = null;
+    return truthLedgerCache;
+  }
+
+  try {
+    truthLedgerCache = JSON.parse(fs.readFileSync(ledgerPath, "utf8"));
+  } catch {
+    truthLedgerCache = null;
+  }
+
+  return truthLedgerCache;
+}
+
+function claimEntities(claim) {
+  const entities = Array.isArray(claim?.entities) ? claim.entities : [];
+
+  return entities
+    .map(entity => ({
+      type: String(entity?.type ?? "").trim(),
+      name: String(entity?.name ?? "").trim()
+    }))
+    .filter(entity => entity.type && entity.name);
+}
+
+function claimLegacyNames(claim, entityTypeKey) {
+  const values = Array.isArray(claim?.[entityTypeKey]) ? claim[entityTypeKey] : [];
+
+  return values
+    .map(value => normalizeLinkTargetName(value))
+    .filter(Boolean);
+}
+
+function claimMatchesTarget(claim, entityTypeKey, targetName) {
+  const normalizedTarget = targetName.toLowerCase();
+
+  if (
+    claimEntities(claim)
+      .some(entity =>
+        entity.type === entityTypeKey &&
+        entity.name.toLowerCase() === normalizedTarget
+      )
+  ) {
+    return true;
+  }
+
+  return claimLegacyNames(claim, entityTypeKey)
+    .some(name => name.toLowerCase() === normalizedTarget);
+}
+
+function supportRecordsForClaim(claim) {
+  const support = Array.isArray(claim?.support) ? claim.support : [];
+
+  if (support.length > 0) {
+    return support;
+  }
+
+  if (!claim?.source?.path) {
+    return [];
+  }
+
+  return [{
+    type: claim.authority ?? "claim",
+    path: claim.source.path,
+    absolutePath: claim.source.absolutePath,
+    line: claim.source.line,
+    excerpt: claim.statement
+  }];
+}
+
+function truncateForPrompt(value, maxLength = 260) {
+  const text = normalizeWhitespace(value);
+
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  return `${text.slice(0, maxLength - 3)}...`;
+}
+
+function formatSupportList(records) {
+  if (!records.length) {
+    return "None.";
+  }
+
+  return records
+    .slice(0, 3)
+    .map(record => {
+      const location = `${record.path ?? "(unknown)"}:${record.line ?? "?"}`;
+      const excerpt = truncateForPrompt(record.excerpt ?? "");
+      return excerpt ? `- ${location}: ${excerpt}` : `- ${location}`;
+    })
+    .join("\n");
+}
+
+function relationshipMatchesTarget(relationship, targetName) {
+  const normalizedTarget = targetName.toLowerCase();
+
+  return [relationship?.source, relationship?.target, relationship?.statement]
+    .some(value => String(value ?? "").toLowerCase().includes(normalizedTarget));
+}
+
+function formatRelationshipList(relationships, targetName) {
+  const matching = (Array.isArray(relationships) ? relationships : [])
+    .filter(relationship => relationshipMatchesTarget(relationship, targetName))
+    .slice(0, 3);
+
+  if (!matching.length) {
+    return "None.";
+  }
+
+  return matching
+    .map(relationship => {
+      const dimension = relationship.dimension ? ` (${relationship.dimension})` : "";
+      const source = relationship.source || "?";
+      const target = relationship.target || "?";
+      const statement = relationship.statement ? `: ${truncateForPrompt(relationship.statement, 180)}` : "";
+      return `- ${source} -> ${target}${dimension}${statement}`;
+    })
+    .join("\n");
+}
+
+function formatTruthLedgerSupport(targetConfig, targetNames, visibleScenes, visibilityLabel) {
+  const ledger = readTruthLedgerIndex();
+
+  if (!ledger) {
+    return "Truth Ledger index is not available. Run Queue-Truth-Ledger to generate support-map context.";
+  }
+
+  const claims = [
+    ...(Array.isArray(ledger.claims) ? ledger.claims : []),
+    ...(Array.isArray(ledger.inferredClaims) ? ledger.inferredClaims : [])
+  ];
+  const visiblePaths = new Set(
+    visibleScenes.map(scene => normalizePathKey(scene.path))
+  );
+  const blocks = [];
+
+  for (const targetName of targetNames) {
+    const matchingClaims = claims
+      .filter(claim => claimMatchesTarget(claim, targetConfig.key, targetName))
+      .slice(0, 5);
+
+    if (!matchingClaims.length) {
+      continue;
+    }
+
+    const authorSupport = [];
+    const visibleSupport = [];
+    const relationships = [];
+
+    for (const claim of matchingClaims) {
+      authorSupport.push(...supportRecordsForClaim(claim));
+      visibleSupport.push(
+        ...supportRecordsForClaim(claim)
+          .filter(record => visiblePaths.has(normalizePathKey(record.path)))
+      );
+      relationships.push(...(Array.isArray(claim.relationships) ? claim.relationships : []));
+    }
+
+    blocks.push([
+      `${targetConfig.label}: ${targetName}`,
+      `${visibilityLabel}:`,
+      formatSupportList(visibleSupport),
+      "Author support, not necessarily visible to reader or character yet:",
+      formatSupportList(authorSupport),
+      "Relationships:",
+      formatRelationshipList(relationships, targetName)
+    ].join("\n"));
+  }
+
+  if (!blocks.length) {
+    return "No Truth Ledger support found for the listed targets.";
+  }
+
+  return blocks.join("\n\n---\n\n");
+}
+
 function numericFrontmatter(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -1215,6 +1414,7 @@ function listPriorScenes(currentFilePath, currentScene) {
 
       return {
         fileName: entry.name,
+        path: relativeVaultPath(scenePath),
         name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
@@ -1246,6 +1446,7 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
 
       return {
         fileName: entry.name,
+        path: relativeVaultPath(scenePath),
         name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
@@ -1475,7 +1676,8 @@ function buildCharacterAwarenessPrompt(
   plotThreadNames,
   characterDefinitions,
   plotThreadDefinitions,
-  priorChronologyContext
+  priorChronologyContext,
+  truthLedgerSupport
 ) {
   const linkedCharacters = linkedTargetEntries(parsed.content, characterNames);
   const linkedPlotThreads = linkedTargetEntries(parsed.content, plotThreadNames);
@@ -1549,6 +1751,12 @@ ${plotThreadDefinitions}
 Prior chronology context for comparison:
 ${priorChronologyContext}
 
+Truth Ledger support map:
+${truthLedgerSupport}
+
+Use prior chronology support as possible evidence available before this scene.
+Use author support as grounding for the story's intended truth, but do not assume a character knows author support unless prior chronology context or the current scene gives that character plausible access.
+
 Scene:
 
 ${parsed.content}
@@ -1579,15 +1787,21 @@ async function evaluateCharacterAwareness(targetName) {
   const plotThreadNames = plotThreadDefinitionEntries.map((definition) => definition.name);
   const characterDefinitions = formatDefinitions(characterDefinitionEntries);
   const plotThreadDefinitions = formatDefinitions(plotThreadDefinitionEntries);
-  const priorChronologyContext = formatPriorChronologyContext(
-    listPriorChronologyScenes(filePath, parsed)
+  const priorChronologyScenes = listPriorChronologyScenes(filePath, parsed);
+  const priorChronologyContext = formatPriorChronologyContext(priorChronologyScenes);
+  const truthLedgerSupport = formatTruthLedgerSupport(
+    plotThreadConfig,
+    plotThreadNames,
+    priorChronologyScenes,
+    "Prior chronology support before this scene"
   );
   const prompt = buildCharacterAwarenessPrompt(
     characterNames,
     plotThreadNames,
     characterDefinitions,
     plotThreadDefinitions,
-    priorChronologyContext
+    priorChronologyContext,
+    truthLedgerSupport
   );
   const inputHash = evaluationInputHash(
     "Character Awareness",
@@ -1622,7 +1836,7 @@ async function evaluateCharacterAwareness(targetName) {
           characterDefinitions,
           plotThreadDefinitions
         ].join("\n\n"),
-        priorScenes: priorChronologyContext
+        priorScenes: `${priorChronologyContext}\n\n${truthLedgerSupport}`
       })
     );
   }
@@ -1703,7 +1917,7 @@ function getReaderAwarenessGuidance(targetConfig) {
   };
 }
 
-function buildReaderAwarenessPrompt(targetConfig, targetNames, targetDefinitions, priorSceneContext) {
+function buildReaderAwarenessPrompt(targetConfig, targetNames, targetDefinitions, priorSceneContext, truthLedgerSupport) {
   const guidance = getReaderAwarenessGuidance(targetConfig);
   const linkedTargets = linkedTargetEntries(parsed.content, targetNames);
 
@@ -1764,6 +1978,12 @@ ${targetDefinitions}
 Prior scene context available to the reader:
 ${priorSceneContext}
 
+Truth Ledger support map:
+${truthLedgerSupport}
+
+Use reader-visible support as evidence the reader could already have before this scene.
+Use author support as grounding for the story's intended truth, but do not treat author support as reader knowledge unless it appears in prior scene context or the current scene.
+
 Current scene:
 
 ${parsed.content}
@@ -1785,14 +2005,20 @@ async function evaluateReaderAwareness(targetName) {
   const targetDefinitionEntries = getTargetDefinitions(targetConfig);
   const targetNames = targetDefinitionEntries.map((definition) => definition.name);
   const targetDefinitions = formatDefinitions(targetDefinitionEntries);
-  const priorSceneContext = formatPriorSceneContext(
-    listPriorScenes(filePath, parsed)
+  const priorScenes = listPriorScenes(filePath, parsed);
+  const priorSceneContext = formatPriorSceneContext(priorScenes);
+  const truthLedgerSupport = formatTruthLedgerSupport(
+    targetConfig,
+    targetNames,
+    priorScenes,
+    "Reader-visible support before this scene"
   );
   const prompt = buildReaderAwarenessPrompt(
     targetConfig,
     targetNames,
     targetDefinitions,
-    priorSceneContext
+    priorSceneContext,
+    truthLedgerSupport
   );
   const inputHash = evaluationInputHash("Reader Awareness", targetName, prompt);
 
@@ -1818,7 +2044,7 @@ async function evaluateReaderAwareness(targetName) {
       awarenessSourceText({
         scene: parsed.content,
         definitions: targetDefinitions,
-        priorScenes: priorSceneContext
+        priorScenes: `${priorSceneContext}\n\n${truthLedgerSupport}`
       })
     );
   }

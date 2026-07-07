@@ -544,6 +544,8 @@ Supported `truth` values:
 
 The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
 
+Awareness evaluators use the generated support map as grounding. Reader Awareness receives support from prior story-order scenes as reader-visible context. Character Awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
+
 ## Reports
 
 Reports live in `Example Book - A Ledger for Maribel Leigh/Reports`.
@@ -557,7 +559,7 @@ Core report categories:
 - `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
-- `Truth Ledger`: generated support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
+- `Truth Ledger`: selector-driven support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
 - `Goal Bullseye`: radar view of average goal achievement across metric families.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
