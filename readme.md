@@ -119,14 +119,22 @@ Project calibration is controlled separately:
     "outline": {
       "guidance": "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
       "scoreCeilings": {
-        "Resolution": 3.5
+        "Resolution": 3.5,
+        "readerAwareness": {
+          "delta": 5,
+          "confidence": 5
+        },
+        "characterAwareness": {
+          "delta": 5,
+          "confidence": 5
+        }
       }
     }
   }
 }
 ```
 
-Set `projectMode` to `outline` when you are sketching scenes and want conservative standard-metric charts. Score ceilings use the evaluator's 0-10 scale, so `Resolution: 3.5` appears as roughly 35% in reports that display percentages. Default `draft` mode does not cap scores.
+Set `projectMode` to `outline` when you are sketching scenes and want conservative charts. Scalar score ceilings use the evaluator's 0-10 scale, so `Resolution: 3.5` appears as roughly 35% in reports that display percentages. Awareness ceilings can cap individual fields such as `delta` and `confidence`. Default `draft` mode does not cap scores.
 
 ## Quick Start
 
@@ -416,6 +424,33 @@ ai:
 ```
 
 `delta` is the cumulative chart input. `salience` is how present the plot thread is to the character. `confidence` is how certain the character seems about what they know or infer. `alignment` is how aligned the character's apparent understanding is with the supplied definitions and scene evidence. `evidenceStrength` is how much support the supplied text gives for the scores.
+
+## Generic Observations
+
+Evaluators also write additive generic observations under `ai.observations`. Existing report fields such as `ai.readerAwareness`, `ai.characterAwareness`, and `ai.resolution` remain the compatibility layer; `ai.observations` is the normalized layer for future trajectory reports.
+
+```yaml
+ai:
+  observations:
+    plotThreads:
+      Missing Ledger:
+        resolution:
+          value: 3.5
+          projectMode: outline
+        readerAwareness:
+          value: 5
+          observer:
+            type: reader
+            name: Reader
+        characterAwareness:
+          Mara Bell:
+            value: 4
+            observer:
+              type: characters
+              name: Mara Bell
+```
+
+Use the compatibility fields for current reports. Use `ai.observations` when building entity/dimension/trajectory views.
 
 ## Awareness Rationale Modes
 

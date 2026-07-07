@@ -543,7 +543,7 @@ function normalizeSceneOnlyScore(bucket, label, rawResponse, settings, sourceTex
   return normalizeStandardMetricEntry(bucket, settings, sourceText);
 }
 
-function configuredScoreCeiling(metricName) {
+function configuredCalibrationEntry(metricName) {
   const ceilings = calibrationModeConfig.scoreCeilings ?? {};
   const candidates = [
     metricName,
@@ -552,24 +552,52 @@ function configuredScoreCeiling(metricName) {
   ];
 
   for (const key of candidates) {
-    const value = Number(ceilings[key]);
-
-    if (Number.isFinite(value)) {
-      return clampNumber(value, 0, 10, 10);
+    if (Object.prototype.hasOwnProperty.call(ceilings, key)) {
+      return ceilings[key];
     }
   }
 
   return null;
 }
 
+function configuredScoreCeiling(metricName) {
+  const entry = configuredCalibrationEntry(metricName);
+  const value = Number(entry);
+
+  return Number.isFinite(value)
+    ? clampNumber(value, 0, 10, 10)
+    : null;
+}
+
+function configuredFieldCeilings(metricName) {
+  const entry = configuredCalibrationEntry(metricName);
+
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return {};
+  }
+
+  const ceilings = {};
+
+  for (const [field, value] of Object.entries(entry)) {
+    const number = Number(value);
+
+    if (Number.isFinite(number)) {
+      ceilings[field] = clampNumber(number, 0, 10, 10);
+    }
+  }
+
+  return ceilings;
+}
+
 function calibrationPromptGuidance(metricName) {
   const ceiling = configuredScoreCeiling(metricName);
+  const fieldCeilings = configuredFieldCeilings(metricName);
   const guidance =
     typeof calibrationModeConfig.guidance === "string"
       ? calibrationModeConfig.guidance.trim()
       : "";
 
-  if (!guidance && ceiling === null) {
+  if (!guidance && ceiling === null && Object.keys(fieldCeilings).length === 0) {
     return "";
   }
 
@@ -584,6 +612,15 @@ function calibrationPromptGuidance(metricName) {
   if (ceiling !== null) {
     lines.push(
       `Calibration cap: do not score ${metricName} above ${ceiling} on the 0-10 scale in this mode unless the configured cap is changed.`
+    );
+  }
+
+  if (Object.keys(fieldCeilings).length > 0) {
+    const fields = Object.entries(fieldCeilings)
+      .map(([field, value]) => `${field} <= ${value}`)
+      .join(", ");
+    lines.push(
+      `Calibration field caps for ${metricName}: ${fields}. Use these caps unless the configured cap is changed.`
     );
   }
 
@@ -620,6 +657,62 @@ function applyCalibrationToStandardScores(scores, metricName) {
     ...calibrated,
     items
   };
+}
+
+function applyCalibrationToAwarenessEntry(entry, metricName) {
+  const fieldCeilings = configuredFieldCeilings(metricName);
+  const raw = {};
+  let calibrated = entry;
+
+  for (const [field, ceiling] of Object.entries(fieldCeilings)) {
+    if (typeof calibrated?.[field] !== "number" || calibrated[field] <= ceiling) {
+      continue;
+    }
+
+    raw[field] = calibrated[field];
+    calibrated = {
+      ...calibrated,
+      [field]: ceiling
+    };
+  }
+
+  if (Object.keys(raw).length === 0) {
+    return entry;
+  }
+
+  return {
+    ...calibrated,
+    calibration: {
+      mode: projectMode,
+      fieldCeilings,
+      raw
+    }
+  };
+}
+
+function applyCalibrationToReaderAwarenessMap(scores, metricName) {
+  const calibrated = {};
+
+  for (const [targetName, entry] of Object.entries(scores ?? {})) {
+    calibrated[targetName] = applyCalibrationToAwarenessEntry(entry, metricName);
+  }
+
+  return calibrated;
+}
+
+function applyCalibrationToCharacterAwarenessMap(scores, metricName) {
+  const calibrated = {};
+
+  for (const [plotThreadName, characterScores] of Object.entries(scores ?? {})) {
+    calibrated[plotThreadName] = {};
+
+    for (const [characterName, entry] of Object.entries(characterScores ?? {})) {
+      calibrated[plotThreadName][characterName] =
+        applyCalibrationToAwarenessEntry(entry, metricName);
+    }
+  }
+
+  return calibrated;
 }
 
 function normalizeCharacterAwarenessMap(scores, plotThreadNames, characterNames, sourceText) {
@@ -756,6 +849,13 @@ function standardMetricObservationPayload(metricName, entry, settings, targetCon
       min: 0,
       max: 10
     },
+    fieldScales: {
+      delta: { min: 0, max: 10 },
+      salience: { min: 0, max: 10 },
+      confidence: { min: 0, max: 10 },
+      alignment: { min: -10, max: 10 },
+      evidenceStrength: { min: 0, max: 10 }
+    },
     projectMode,
     profile: evaluationProfile.name,
     model: config.model,
@@ -796,6 +896,94 @@ function writeStandardMetricObservations(metricName, targetConfig, scores, setti
       parsed.data.ai.observations[targetConfig.key][entityName] ?? {};
     parsed.data.ai.observations[targetConfig.key][entityName][dimension] =
       standardMetricObservationPayload(metricName, entry, settings, targetConfig, entityName);
+  }
+}
+
+function awarenessObservationPayload(metricName, entry, targetConfig, entityName, observer = null) {
+  const payload = {
+    entity: {
+      name: entityName,
+      type: targetConfig.entityType,
+      target: targetConfig.label
+    },
+    dimension: toCamelCase(metricName),
+    value: entry.delta,
+    values: {
+      delta: entry.delta,
+      salience: entry.salience,
+      confidence: entry.confidence,
+      alignment: entry.alignment,
+      evidenceStrength: entry.evidenceStrength
+    },
+    scale: {
+      min: 0,
+      max: 10
+    },
+    projectMode,
+    profile: evaluationProfile.name,
+    model: config.model,
+    updated: new Date().toISOString()
+  };
+
+  if (observer) {
+    payload.observer = observer;
+  }
+
+  if (entry.calibration) {
+    payload.calibration = entry.calibration;
+  }
+
+  if (awarenessRationaleMode === "paraphrase") {
+    payload.rationale = entry.rationale ?? "";
+  } else if (awarenessRationaleMode === "extractive") {
+    payload.evidence = entry.evidence ?? [];
+  }
+
+  return payload;
+}
+
+function writeReaderAwarenessObservations(targetConfig, scores) {
+  const dimension = "readerAwareness";
+  parsed.data.ai.observations = parsed.data.ai.observations ?? {};
+  parsed.data.ai.observations[targetConfig.key] =
+    parsed.data.ai.observations[targetConfig.key] ?? {};
+
+  for (const [entityName, entry] of Object.entries(scores ?? {})) {
+    parsed.data.ai.observations[targetConfig.key][entityName] =
+      parsed.data.ai.observations[targetConfig.key][entityName] ?? {};
+    parsed.data.ai.observations[targetConfig.key][entityName][dimension] =
+      awarenessObservationPayload(
+        "Reader Awareness",
+        entry,
+        targetConfig,
+        entityName,
+        { type: "reader", name: "Reader" }
+      );
+  }
+}
+
+function writeCharacterAwarenessObservations(plotThreadConfig, scores) {
+  const dimension = "characterAwareness";
+  parsed.data.ai.observations = parsed.data.ai.observations ?? {};
+  parsed.data.ai.observations[plotThreadConfig.key] =
+    parsed.data.ai.observations[plotThreadConfig.key] ?? {};
+
+  for (const [plotThreadName, characterScores] of Object.entries(scores ?? {})) {
+    parsed.data.ai.observations[plotThreadConfig.key][plotThreadName] =
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName] ?? {};
+    parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension] =
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension] ?? {};
+
+    for (const [characterName, entry] of Object.entries(characterScores ?? {})) {
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension][characterName] =
+        awarenessObservationPayload(
+          "Character Awareness",
+          entry,
+          plotThreadConfig,
+          plotThreadName,
+          { type: "characters", name: characterName }
+        );
+    }
   }
 }
 
@@ -1260,6 +1448,8 @@ Do not score plot importance.
 Only score what each character plausibly learns during this scene.
 If a character is not present or cannot plausibly learn the information, use delta 0.
 
+${calibrationPromptGuidance("Character Awareness")}
+
 ${awarenessRationaleInstructions()}
 
 Use these character definitions:
@@ -1349,8 +1539,14 @@ async function evaluateCharacterAwareness(targetName) {
     );
   }
 
+  plotThreads = applyCalibrationToCharacterAwarenessMap(
+    plotThreads,
+    "Character Awareness"
+  );
+
   parsed.data.ai.characterAwareness = parsed.data.ai.characterAwareness ?? {};
   parsed.data.ai.characterAwareness.plotThreads = plotThreads;
+  writeCharacterAwarenessObservations(plotThreadConfig, plotThreads);
   markEvaluationInput("characterAwareness", "plotThreads", inputHash);
   parsed.data.ai.characterAwareness.updated = new Date().toISOString();
   return true;
@@ -1469,6 +1665,8 @@ Do not score what characters know; this is reader-facing awareness only.
 Do not score scene relevance.
 ${guidance.cautions.join("\n")}
 
+${calibrationPromptGuidance("Reader Awareness")}
+
 ${awarenessRationaleInstructions()}
 
 Use these ${targetConfig.pluralLabel} definitions:
@@ -1536,8 +1734,14 @@ async function evaluateReaderAwareness(targetName) {
     );
   }
 
+  targetScores = applyCalibrationToReaderAwarenessMap(
+    targetScores,
+    "Reader Awareness"
+  );
+
   parsed.data.ai.readerAwareness = parsed.data.ai.readerAwareness ?? {};
   parsed.data.ai.readerAwareness[targetConfig.key] = targetScores;
+  writeReaderAwarenessObservations(targetConfig, targetScores);
   markEvaluationInput("readerAwareness", targetConfig.key, inputHash);
   parsed.data.ai.readerAwareness.updated = new Date().toISOString();
   return true;

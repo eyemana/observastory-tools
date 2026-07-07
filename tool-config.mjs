@@ -54,7 +54,15 @@ export const defaultConfig = {
         guidance:
           "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
         scoreCeilings: {
-          Resolution: 3.5
+          Resolution: 3.5,
+          readerAwareness: {
+            delta: 5,
+            confidence: 5
+          },
+          characterAwareness: {
+            delta: 5,
+            confidence: 5
+          }
         }
       },
       draft: {
