@@ -906,7 +906,8 @@ function awarenessObservationPayload(metricName, entry, targetConfig, entityName
       type: targetConfig.entityType,
       target: targetConfig.label
     },
-    dimension: toCamelCase(metricName),
+    dimension: "awareness",
+    metric: metricName,
     value: entry.delta,
     values: {
       delta: entry.delta,
@@ -943,7 +944,6 @@ function awarenessObservationPayload(metricName, entry, targetConfig, entityName
 }
 
 function writeReaderAwarenessObservations(targetConfig, scores) {
-  const dimension = "readerAwareness";
   parsed.data.ai.observations = parsed.data.ai.observations ?? {};
   parsed.data.ai.observations[targetConfig.key] =
     parsed.data.ai.observations[targetConfig.key] ?? {};
@@ -951,7 +951,9 @@ function writeReaderAwarenessObservations(targetConfig, scores) {
   for (const [entityName, entry] of Object.entries(scores ?? {})) {
     parsed.data.ai.observations[targetConfig.key][entityName] =
       parsed.data.ai.observations[targetConfig.key][entityName] ?? {};
-    parsed.data.ai.observations[targetConfig.key][entityName][dimension] =
+    parsed.data.ai.observations[targetConfig.key][entityName].awareness =
+      parsed.data.ai.observations[targetConfig.key][entityName].awareness ?? {};
+    parsed.data.ai.observations[targetConfig.key][entityName].awareness.reader =
       awarenessObservationPayload(
         "Reader Awareness",
         entry,
@@ -963,7 +965,6 @@ function writeReaderAwarenessObservations(targetConfig, scores) {
 }
 
 function writeCharacterAwarenessObservations(plotThreadConfig, scores) {
-  const dimension = "characterAwareness";
   parsed.data.ai.observations = parsed.data.ai.observations ?? {};
   parsed.data.ai.observations[plotThreadConfig.key] =
     parsed.data.ai.observations[plotThreadConfig.key] ?? {};
@@ -971,11 +972,13 @@ function writeCharacterAwarenessObservations(plotThreadConfig, scores) {
   for (const [plotThreadName, characterScores] of Object.entries(scores ?? {})) {
     parsed.data.ai.observations[plotThreadConfig.key][plotThreadName] =
       parsed.data.ai.observations[plotThreadConfig.key][plotThreadName] ?? {};
-    parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension] =
-      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension] ?? {};
+    parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness =
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness ?? {};
+    parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness.characters =
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness.characters ?? {};
 
     for (const [characterName, entry] of Object.entries(characterScores ?? {})) {
-      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName][dimension][characterName] =
+      parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness.characters[characterName] =
         awarenessObservationPayload(
           "Character Awareness",
           entry,

@@ -437,17 +437,18 @@ ai:
         resolution:
           value: 3.5
           projectMode: outline
-        readerAwareness:
-          value: 5
-          observer:
-            type: reader
-            name: Reader
-        characterAwareness:
-          Mara Bell:
-            value: 4
+        awareness:
+          reader:
+            value: 5
             observer:
-              type: characters
-              name: Mara Bell
+              type: reader
+              name: Reader
+          characters:
+            Mara Bell:
+              value: 4
+              observer:
+                type: characters
+                name: Mara Bell
 ```
 
 Use the compatibility fields for current reports. Use `ai.observations` when building entity/dimension/trajectory views.
