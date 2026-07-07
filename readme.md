@@ -532,25 +532,20 @@ Reports live in `Example Book - A Ledger for Maribel Leigh/Reports`.
 
 Most report pages use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves.
 
-Simple report categories:
+Core report categories:
 
-- `Character Relevance/Tension by Scene`: how strongly each scene relates to or tensions a character.
-- `Plot Thread Relevance/Tension/Resolution by Scene`: how scenes support, pressure, or resolve plot threads.
-- `Story Engine Relevance/Tension by Scene`: how scenes support broad story engines such as mystery or institutional conflict.
-- `Arc Relevance/Tension by Scene`: how scenes support or pressure arcs.
-- `Pacing/Conflict/Poetics/Coherence`: scene-only scores stored under each metric's `scene` bucket.
-- `Pacing/Conflict/Poetics/Coherence by Scene`: basic line reports for the new scene-only metrics.
+- `Trajectory by Scene`: selector-driven line chart for entity type, dimension, and observer. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
 - `Scene Metric Bullseye`: selected-scene radar and score bars across available metric families.
-- `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, and coherence.
+- `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
-- `Character Awareness of Plot Thread by Scene`: what characters newly learn about plot threads.
-- `Reader Awareness of Character/Plot Thread/Arc by Scene`: what the reader newly learns, shown as scene deltas and cumulative totals.
 - `Truth Ledger`: collected author-written claims from configured notes. Inferred claims are generated into JSON for evaluator use but hidden from this report by default.
 - `Goal Bullseye`: radar view of average goal achievement across metric families.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 - `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
+
+Older one-off reports such as `Plot Thread Resolution by Scene`, `Reader Awareness of Plot Thread by Scene`, and `Pacing by Scene` live under `Reports/Legacy`. They are kept as reference/compatibility views, but new report work should prefer selector-driven reports instead of adding more entity/dimension permutations.
 
 If a report is empty:
 
