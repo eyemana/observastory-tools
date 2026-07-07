@@ -156,6 +156,12 @@ export const defaultConfig = {
     statusNoticeIntervalMs: 5000,
     statusNoticeMaxMinutes: 240,
     nodePath: "node",
+    backgroundSceneScan: {
+      enabled: true,
+      debounceMs: 5000,
+      baselineOnFirstRun: true,
+      fingerprintPath: ".queue/background-scene-fingerprints.json"
+    },
     storyboardReaderAwarenessAfterReorder: "ask",
     readerAwarenessEvaluations: [
       ["Reader Awareness", "Character"],

@@ -247,6 +247,26 @@
     // Use a full path here if Obsidian cannot find "node" on PATH.
     "nodePath": "node",
 
+    "backgroundSceneScan": {
+      // In background mode, the worker scans eligible scene notes and queues
+      // only scenes whose author-owned input changed since the last scan.
+      // The fingerprint ignores ai frontmatter so evaluator writes do not
+      // trigger another evaluation loop.
+      "enabled": true,
+
+      // Wait this long after detecting a changed scene before queueing it.
+      // This keeps active Obsidian edits from hyper-triggering evaluations.
+      "debounceMs": 5000,
+
+      // On the first background run, write a baseline instead of queueing
+      // every existing scene. Use Queue-All-Scenes-for-Evaluation for an
+      // intentional full pass.
+      "baselineOnFirstRun": true,
+
+      // Relative paths are resolved from observastory-tools.
+      "fingerprintPath": ".queue/background-scene-fingerprints.json"
+    },
+
     // What Storyboard should do after saving a changed tile order.
     // "manual": only save chapter_order and scene_order; use Queue-Reader-Awareness manually.
     // "ask": ask whether to queue Reader Awareness after saving order.

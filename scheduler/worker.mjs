@@ -2,8 +2,11 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
+import crypto from "crypto";
+import matter from "gray-matter";
 
 import {
+  defaultScenesPath,
   defaultChronologyPaths,
   defaultTruthLedgerPaths,
   getSchedulerConfig,
@@ -16,11 +19,13 @@ import {
 import {
   claimJob,
   clearWorkerStop,
+  enqueueEvaluateScenesJob,
   ensureQueueDirs,
   finishJob,
   getQueuePaths,
   isCancelRequested,
   isWorkerStopRequested,
+  listActiveJobFiles,
   listQueuedJobFiles,
   normalizeEvaluations,
   readJob,
@@ -69,6 +74,189 @@ function logLine(logPath, message = "") {
   const line = `[${new Date().toISOString()}] ${message}\n`;
   appendLog(logPath, line);
   console.log(message);
+}
+
+function readJsonFile(filePath, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonFileAtomic(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${crypto.randomBytes(3).toString("hex")}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.renameSync(tempPath, filePath);
+}
+
+function configuredPathFromToolRoot(configuredPath) {
+  if (path.isAbsolute(configuredPath)) {
+    return configuredPath;
+  }
+
+  return path.join(toolRoot, configuredPath);
+}
+
+function backgroundFingerprintPath(schedulerConfig) {
+  const configured = schedulerConfig.backgroundSceneScan?.fingerprintPath ??
+    ".queue/background-scene-fingerprints.json";
+  return configuredPathFromToolRoot(configured);
+}
+
+function authorSceneFingerprint(filePath) {
+  const raw = fs.readFileSync(filePath, "utf8");
+  const parsed = matter(raw);
+  const frontmatter = { ...(parsed.data ?? {}) };
+  delete frontmatter.ai;
+
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify({
+      frontmatter,
+      content: parsed.content
+    }))
+    .digest("hex");
+}
+
+function sceneAlreadyQueued(paths, filePath) {
+  const resolved = path.resolve(filePath);
+
+  for (const activeJobFile of listActiveJobFiles(paths)) {
+    const job = readJob(activeJobFile);
+
+    if (job?.type !== "evaluate-scenes") {
+      continue;
+    }
+
+    if (!Array.isArray(job.sceneFiles) || job.sceneFiles.length === 0) {
+      const scenesFolder = job.scenesFolder ? path.resolve(job.scenesFolder) : null;
+      if (scenesFolder && resolved.startsWith(`${scenesFolder}${path.sep}`)) {
+        return true;
+      }
+    }
+
+    const sceneFiles = Array.isArray(job.sceneFiles)
+      ? job.sceneFiles.map((sceneFile) => path.resolve(sceneFile))
+      : [];
+
+    if (sceneFiles.includes(resolved)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function scanBackgroundSceneChanges(schedulerConfig, paths) {
+  const scanConfig = schedulerConfig.backgroundSceneScan ?? {};
+
+  if (scanConfig.enabled === false) {
+    return;
+  }
+
+  const config = loadConfig(toolRoot);
+  const evaluationProfileName = config.evaluation?.defaultProfile ?? "default";
+  const profile = getEvaluationProfile(config, evaluationProfileName);
+  const vaultRoot = path.resolve(toolRoot, "..");
+  const scenesFolder = path.resolve(vaultRoot, defaultScenesPath(config));
+  const fingerprintPath = backgroundFingerprintPath(schedulerConfig);
+  const state = readJsonFile(fingerprintPath, {
+    version: 1,
+    files: {},
+    pending: {}
+  });
+  const files = listEligibleMarkdownFiles(scenesFolder, profile.sceneFilters);
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const debounceMs = Math.max(1000, Number(scanConfig.debounceMs) || 5000);
+  const knownFiles = state.files ?? {};
+  const pending = state.pending ?? {};
+
+  if (Object.keys(knownFiles).length === 0 && scanConfig.baselineOnFirstRun !== false) {
+    for (const filePath of files) {
+      knownFiles[path.resolve(filePath)] = {
+        fingerprint: authorSceneFingerprint(filePath),
+        updatedAt: nowIso
+      };
+    }
+
+    state.files = knownFiles;
+    state.pending = {};
+    state.baselinedAt = nowIso;
+    writeJsonFileAtomic(fingerprintPath, state);
+    return;
+  }
+
+  const changed = [];
+  const activePaths = new Set(files.map((filePath) => path.resolve(filePath)));
+
+  for (const filePath of files) {
+    const resolved = path.resolve(filePath);
+    const fingerprint = authorSceneFingerprint(filePath);
+    const known = knownFiles[resolved]?.fingerprint;
+
+    if (known === fingerprint) {
+      delete pending[resolved];
+      continue;
+    }
+
+    if (pending[resolved]?.fingerprint !== fingerprint) {
+      pending[resolved] = {
+        fingerprint,
+        firstSeenAt: nowIso
+      };
+      continue;
+    }
+
+    const firstSeenMs = Date.parse(pending[resolved].firstSeenAt);
+
+    if (!Number.isFinite(firstSeenMs) || now - firstSeenMs < debounceMs) {
+      continue;
+    }
+
+    if (!sceneAlreadyQueued(paths, resolved)) {
+      changed.push(resolved);
+    }
+
+    knownFiles[resolved] = {
+      fingerprint,
+      updatedAt: nowIso
+    };
+    delete pending[resolved];
+  }
+
+  for (const knownPath of Object.keys(knownFiles)) {
+    if (!activePaths.has(knownPath)) {
+      delete knownFiles[knownPath];
+      delete pending[knownPath];
+    }
+  }
+
+  state.files = knownFiles;
+  state.pending = pending;
+  state.updatedAt = nowIso;
+  writeJsonFileAtomic(fingerprintPath, state);
+
+  if (changed.length === 0) {
+    return;
+  }
+
+  const result = enqueueEvaluateScenesJob({
+    toolRoot,
+    scenesFolder,
+    sceneFiles: changed,
+    vaultRoot,
+    source: "background-scene-scan",
+    evaluationProfile: profile.name,
+    sceneFilters: {},
+    force: false,
+    label: `Background Changed Scene Evaluation (${changed.length})`,
+    evaluations: schedulerConfig.evaluations
+  });
+
+  console.log(`Queued ${changed.length} changed scene(s) from background scan: ${result.id}`);
 }
 
 function isProcessRunning(pid) {
@@ -1004,6 +1192,12 @@ async function main() {
   console.log(`Polling every ${pollIntervalMs}ms`);
 
   while (true) {
+    try {
+      scanBackgroundSceneChanges(schedulerConfig, paths);
+    } catch (error) {
+      console.error(`Background scene scan failed: ${error.message}`);
+    }
+
     await processAvailableJobs({
       once: false,
       schedulerConfig,

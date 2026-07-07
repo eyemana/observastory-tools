@@ -573,6 +573,12 @@ The config loader accepts JSON with comments, so `//` and `/* ... */` comments a
     "monitorFromTemplater": true,
     "statusNoticeIntervalMs": 5000,
     "statusNoticeMaxMinutes": 240,
+    "backgroundSceneScan": {
+      "enabled": true,
+      "debounceMs": 5000,
+      "baselineOnFirstRun": true,
+      "fingerprintPath": ".queue/background-scene-fingerprints.json"
+    },
     "storyboardReaderAwarenessAfterReorder": "ask"
   }
 }
@@ -587,6 +593,10 @@ The scheduler has one worker and multiple job types:
 `manual` mode is the default. Templater queues the requested job and starts a worker that drains queued jobs, using `throttleMs` between evaluator calls, Truth Ledger note crawls, or Chronology Index scene updates.
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
+
+When `scheduler.backgroundSceneScan.enabled` is true, the background worker also scans eligible scene notes and queues a small scene-evaluation job only for scene files whose author-owned input changed. This scan fingerprints scene content plus author frontmatter and ignores the generated `ai` branch, so evaluator writes do not trigger another evaluation loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-All-Scenes-for-Evaluation.md` when you intentionally want a full pass.
+
+`backgroundSceneScan.debounceMs` controls how long a changed scene must stay stable before the worker queues it. This is the guardrail for active Obsidian editing: repeated saves to the current scene update the pending fingerprint rather than spawning a burst of duplicate jobs.
 
 Scene evaluation jobs are incremental by default. Each evaluator stores an input fingerprint for the metric/target axis it writes, then skips unchanged reruns without calling the model or rewriting the scene note. The fingerprint is based on the evaluator prompt inputs, including the scene text, selected definitions, relevant prior-scene context for awareness metrics, model, and evaluation profile. Set `evaluationCache.enabled` to `false`, or pass `--force` to `scheduler/enqueue-scene-evaluations.mjs` or `evaluators/evaluate-scene.mjs`, when you intentionally want a full rerun.
 
