@@ -264,7 +264,7 @@ ai:
     precision: millisecond
 ```
 
-If a scene has no generated `ai.chronology.sort` and no legacy `chronology_order`, Character Awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
+If a scene has no generated `ai.chronology.sort`, Character Awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
 Storyboard metadata editing prevents two scenes in the same `chapter_order` from sharing the same `scene_order`.
 
 ## Evaluation Scope
@@ -384,19 +384,23 @@ It supports three targets:
 - `Reader Awareness / Plot Thread`: new reader knowledge about a plot thread.
 - `Reader Awareness / Arc`: new visible evidence that an arc progressed, reversed, deepened, or resolved.
 
-Scores are stored under scene frontmatter:
+Scores are stored under scene frontmatter as observations:
 
 ```yaml
 ai:
-  readerAwareness:
+  observations:
     plotThreads:
       Missing Ledger:
-        delta: 7
-        salience: 8
-        confidence: 6
-        alignment: -4
-        evidenceStrength: 7
-        rationale: The scene gives the reader a visible but incomplete ledger clue.
+        awareness:
+          reader:
+            valueKind: delta
+            values:
+              delta: 7
+              salience: 8
+              confidence: 6
+              alignment: -4
+              evidenceStrength: 7
+            rationale: The scene gives the reader a visible but incomplete ledger clue.
 ```
 
 `delta` is the cumulative chart input. `salience` is how present the target is to the reader. `confidence` is how certain the reader is likely to feel about what they know or infer. `alignment` is how aligned the reader's likely understanding is with the supplied definitions, prior context, and scene evidence. `evidenceStrength` is how much support the supplied text gives for the scores.
@@ -405,29 +409,33 @@ Storyboard calculates cumulative totals by summing deltas in story order. If you
 
 ## Character Awareness
 
-Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by generated `ai.chronology.sort`, with legacy `chronology_order` as a fallback, not by `chapter_order` and `scene_order`.
+Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by generated `ai.chronology.sort`, not by `chapter_order` and `scene_order`.
 
-Scores are stored under scene frontmatter:
+Scores are stored under scene frontmatter as observations:
 
 ```yaml
 ai:
-  characterAwareness:
+  observations:
     plotThreads:
       Missing Ledger:
-        Mara Bell:
-          delta: 5
-          salience: 7
-          confidence: 6
-          alignment: -3
-          evidenceStrength: 6
-          rationale: Mara notices the missing ledger but has limited support for what happened to it.
+        awareness:
+          characters:
+            Mara Bell:
+              valueKind: delta
+              values:
+                delta: 5
+                salience: 7
+                confidence: 6
+                alignment: -3
+                evidenceStrength: 6
+              rationale: Mara notices the missing ledger but has limited support for what happened to it.
 ```
 
 `delta` is the cumulative chart input. `salience` is how present the plot thread is to the character. `confidence` is how certain the character seems about what they know or infer. `alignment` is how aligned the character's apparent understanding is with the supplied definitions and scene evidence. `evidenceStrength` is how much support the supplied text gives for the scores.
 
-## Generic Observations
+## Observations
 
-Evaluators also write additive generic observations under `ai.observations`. Existing report fields such as `ai.readerAwareness`, `ai.characterAwareness`, and `ai.resolution` remain the compatibility layer; `ai.observations` is the normalized layer for future trajectory reports.
+Evaluators write report-facing data under `ai.observations`.
 
 ```yaml
 ai:
@@ -435,23 +443,31 @@ ai:
     plotThreads:
       Missing Ledger:
         resolution:
-          value: 3.5
+          valueKind: delta
+          values:
+            delta: 3.5
           projectMode: outline
         awareness:
           reader:
+            valueKind: delta
             value: 5
+            values:
+              delta: 5
             observer:
               type: reader
               name: Reader
           characters:
             Mara Bell:
+              valueKind: delta
               value: 4
+              values:
+                delta: 4
               observer:
                 type: characters
                 name: Mara Bell
 ```
 
-Use the compatibility fields for current reports. Use `ai.observations` when building entity/dimension/trajectory views.
+Entity dimensions such as relevance, tension, and resolution are scene deltas. Scene craft dimensions such as pacing, conflict, poetics, and coherence are scene scores.
 
 ## Awareness Rationale Modes
 
@@ -486,11 +502,13 @@ Relevance, Tension, Resolution, Pacing, Conflict, Poetics, and Coherence use `st
 
 Modes:
 
-- `off`: store only numeric scores.
+- `off`: store only numeric deltas or scores.
 - `extractive`: store exact evidence excerpts copied from the supplied scene or definitions.
 - `paraphrase`: store one tight rationale sentence in the configured `rationaleField`.
 
-Pacing, Conflict, Poetics, and Coherence are scene-only metrics. They use the target `Scene`, do not load character/plot/arc/story-engine definitions, and write scores under paths such as `ai.pacing.scene.scene`.
+Relevance, Tension, and Resolution are entity dimensions and write scene deltas under paths such as `ai.observations.plotThreads.<plot thread>.resolution.values.delta`.
+
+Pacing, Conflict, Poetics, and Coherence are scene-only dimensions. They use the target `Scene`, do not load character/plot/arc/story-engine definitions, and write scores under paths such as `ai.observations.scene.<scene name>.pacing.values.score`.
 
 ## Truth Ledger
 
@@ -534,7 +552,7 @@ Most report pages use Dataview or DataviewJS to read scene frontmatter and rende
 
 Core report categories:
 
-- `Trajectory by Scene`: selector-driven line chart for entity type, dimension, and observer. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
+- `Observation Trajectory by Scene`: selector-driven line chart for entity type, dimension, observer, and delta/cumulative display. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
 - `Scene Metric Bullseye`: selected-scene radar and score bars across available metric families.
 - `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
@@ -545,11 +563,11 @@ Core report categories:
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 - `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
 
-Older one-off reports such as `Plot Thread Resolution by Scene`, `Reader Awareness of Plot Thread by Scene`, and `Pacing by Scene` live under `Reports/Legacy`. They are kept as reference/compatibility views, but new report work should prefer selector-driven reports instead of adding more entity/dimension permutations.
+One-off report permutations have been pruned. Use selector-driven reports instead of adding entity/dimension permutations.
 
 If a report is empty:
 
-- Confirm the scene evaluation queue has run for that metric.
+- Confirm the scene evaluation queue has run for that dimension/entity type.
 - Reopen the note or refresh Dataview.
 - Confirm the Charts plugin is enabled for chart reports.
 - Inspect the scene frontmatter under `ai` to confirm the expected data exists.

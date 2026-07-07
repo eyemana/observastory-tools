@@ -293,7 +293,7 @@ Each evidence excerpt must use the author's own words exactly.`;
   }
 
   return `
-Return ${settings.rationaleType} as one tight sentence supporting the associated score value.
+Return ${settings.rationaleType} as one tight sentence supporting the associated numeric value.
 Use the JSON field "${settings.rationaleField}" for that rationale.`;
 }
 
@@ -338,8 +338,13 @@ function normalizeStandardMetricEntry(rawValue, settings, sourceText) {
     rawValue && typeof rawValue === "object"
       ? rawValue
       : {};
+  const numericValue = typeof rawObject.delta === "number"
+    ? rawObject.delta
+    : typeof rawObject.score === "number"
+      ? rawObject.score
+      : 0;
   const normalized = {
-    scene: typeof rawObject.scene === "number" ? rawObject.scene : 0
+    scene: numericValue
   };
 
   if (settings.rationaleMode === "paraphrase") {
@@ -482,28 +487,34 @@ function normalizeSubjectRelationshipScoreMap(
     if (
       rawValue &&
       typeof rawValue === "object" &&
-      typeof rawValue.scene === "number"
+      (
+        typeof rawValue.delta === "number" ||
+        typeof rawValue.score === "number"
+      )
     ) {
-      normalized.items[name] = normalizeStandardMetricEntry(
+      const normalizedEntry = normalizeStandardMetricEntry(
         rawValue,
         settings,
         sourceText
       );
-      returnedItemScores.push(rawValue.scene);
+      normalized.items[name] = normalizedEntry;
+      returnedItemScores.push(normalizedEntry.scene);
     } else {
       normalized.items[name] = { scene: 0 };
 
       if (settings.rationaleMode === "paraphrase") {
         normalized.items[name][settings.rationaleField] =
-          `${label} was selected for evaluation, but the model did not return a scene score.`;
+          `${label} was selected for evaluation, but the model did not return a delta value.`;
       } else if (settings.rationaleMode === "extractive") {
         normalized.items[name].evidence = [];
       }
     }
   }
 
-  if (typeof bucket.scene === "number") {
-    normalized.scene = bucket.scene;
+  if (typeof bucket.delta === "number") {
+    normalized.scene = bucket.delta;
+  } else if (typeof bucket.score === "number") {
+    normalized.scene = bucket.score;
   } else if (returnedItemScores.length > 0) {
     const sum = returnedItemScores.reduce((total, score) => total + score, 0);
     normalized.scene = Math.round(sum / returnedItemScores.length);
@@ -536,7 +547,10 @@ function normalizeSceneOnlyScore(bucket, label, rawResponse, settings, sourceTex
     throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
   }
 
-  if (typeof bucket.scene !== "number") {
+  if (
+    typeof bucket.score !== "number" &&
+    typeof bucket.delta !== "number"
+  ) {
     throw new Error(`Invalid ${label} scene score: ${rawResponse}`);
   }
 
@@ -796,13 +810,29 @@ function evaluationInputHash(metricName, targetName, prompt) {
 }
 
 function hasExistingEvaluation(metricKey, targetKey) {
-  const value = parsed.data.ai?.[metricKey]?.[targetKey];
+  const observations = parsed.data.ai?.observations;
 
-  if (!value || typeof value !== "object") {
+  if (!observations || typeof observations !== "object") {
     return false;
   }
 
-  return Object.keys(value).length > 0;
+  if (targetKey === "scene") {
+    const sceneName = path.basename(filePath, ".md");
+    return Boolean(observations.scene?.[sceneName]?.[metricKey]);
+  }
+
+  if (metricKey === "readerAwareness") {
+    return Object.values(observations[targetKey] ?? {})
+      .some(entry => Boolean(entry?.awareness?.reader));
+  }
+
+  if (metricKey === "characterAwareness") {
+    return Object.values(observations[targetKey] ?? {})
+      .some(entry => Object.keys(entry?.awareness?.characters ?? {}).length > 0);
+  }
+
+  return Object.values(observations[targetKey] ?? {})
+    .some(entry => Boolean(entry?.[metricKey]));
 }
 
 function shouldSkipEvaluation(metricKey, targetKey, inputHash) {
@@ -814,17 +844,17 @@ function shouldSkipEvaluation(metricKey, targetKey, inputHash) {
     return false;
   }
 
-  const metadata = parsed.data.ai?.[metricKey]?.evaluationInputs?.[targetKey];
+  const metadata = parsed.data.ai?.evaluationInputs?.[metricKey]?.[targetKey];
 
   return metadata?.version === EVALUATION_INPUT_HASH_VERSION &&
     metadata?.inputHash === inputHash;
 }
 
 function markEvaluationInput(metricKey, targetKey, inputHash) {
-  parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
-  parsed.data.ai[metricKey].evaluationInputs =
-    parsed.data.ai[metricKey].evaluationInputs ?? {};
-  parsed.data.ai[metricKey].evaluationInputs[targetKey] = {
+  parsed.data.ai.evaluationInputs = parsed.data.ai.evaluationInputs ?? {};
+  parsed.data.ai.evaluationInputs[metricKey] =
+    parsed.data.ai.evaluationInputs[metricKey] ?? {};
+  parsed.data.ai.evaluationInputs[metricKey][targetKey] = {
     version: EVALUATION_INPUT_HASH_VERSION,
     inputHash,
     model: config.model,
@@ -836,6 +866,7 @@ function markEvaluationInput(metricKey, targetKey, inputHash) {
 }
 
 function standardMetricObservationPayload(metricName, entry, settings, targetConfig, entityName) {
+  const valueKind = targetConfig.sceneOnly ? "score" : "delta";
   const payload = {
     entity: {
       name: entityName,
@@ -844,7 +875,11 @@ function standardMetricObservationPayload(metricName, entry, settings, targetCon
     },
     dimension: toCamelCase(metricName),
     metric: metricName,
+    valueKind,
     value: entry.scene,
+    values: {
+      [valueKind]: entry.scene
+    },
     scale: {
       min: 0,
       max: 10
@@ -908,6 +943,7 @@ function awarenessObservationPayload(metricName, entry, targetConfig, entityName
     },
     dimension: "awareness",
     metric: metricName,
+    valueKind: "delta",
     value: entry.delta,
     values: {
       delta: entry.delta,
@@ -1053,8 +1089,7 @@ function getChronologyOrder(scene) {
     return String(generatedSort);
   }
 
-  const legacyOrder = numericFrontmatter(scene.data.chronology_order);
-  return legacyOrder === null ? null : String(legacyOrder);
+  return null;
 }
 
 function compareStoryOrder(a, b) {
@@ -1241,6 +1276,7 @@ Do not include markdown.
 
 Score only this scene.
 Do not use other scenes, truth ledgers, chronology, or external story context.
+This is a scene craft score, not a story trajectory delta.
 
 ${calibrationGuidance}
 
@@ -1256,7 +1292,7 @@ ${parsed.content}
 Required JSON:
 {
   "${targetConfig.key}": {
-    "scene": number${standardMetricRationaleJsonShape(settings, "    ")}
+    "score": number${standardMetricRationaleJsonShape(settings, "    ")}
   }
 }
 `;
@@ -1269,14 +1305,19 @@ Do not include trailing commas.
 Every opened object must be closed.
 Do not include markdown.
 
-${targetConfig.pluralLabel} to score:
+${targetConfig.pluralLabel} to evaluate:
 ${JSON.stringify(targetNames, null, 2)}
 
-You must return one score object for every listed ${targetConfig.label}.
+You must return one delta object for every listed ${targetConfig.label}.
 Use EXACTLY the listed names as JSON keys.
 Do not omit any listed item.
 Do not add unlisted items.
-If an item is barely present, still include it with a low score and configured rationale output.
+If an item barely changes in this scene, still include it with delta 0 or a low delta and configured rationale output.
+
+Score delta from 0-10.
+This is a scene delta/change observation, not an absolute state score.
+Measure how much this scene changes, advances, pressures, reveals, complicates, reinforces, or resolves the selected dimension for each listed ${targetConfig.label}.
+Do not score general importance, screen time, or static relevance.
 
 ${calibrationGuidance}
 
@@ -1295,9 +1336,9 @@ ${parsed.content}
 Required JSON:
 {
   "${targetConfig.key}": {
-    "scene": number${standardMetricRationaleJsonShape(settings, "    ")},
+    "delta": number${standardMetricRationaleJsonShape(settings, "    ")},
     "${targetConfig.label}Name": {
-      "scene": number${standardMetricRationaleJsonShape(settings, "      ")}
+      "delta": number${standardMetricRationaleJsonShape(settings, "      ")}
     }
   }
 }
@@ -1370,27 +1411,8 @@ async function evaluateStandardMetric(metricName, targetName) {
 
   normalizedScores = applyCalibrationToStandardScores(normalizedScores, metricName);
 
-  parsed.data.ai[metricKey] = parsed.data.ai[metricKey] ?? {};
-
-  parsed.data.ai[metricKey][targetConfig.key] = {
-    scene: normalizedScores.scene
-  };
-
-  if (settings.rationaleMode === "paraphrase") {
-    parsed.data.ai[metricKey][targetConfig.key][settings.rationaleField] =
-      normalizedScores[settings.rationaleField] ?? "";
-  } else if (settings.rationaleMode === "extractive") {
-    parsed.data.ai[metricKey][targetConfig.key].evidence =
-      normalizedScores.evidence ?? [];
-  }
-
-  for (const [name, value] of Object.entries(normalizedScores.items ?? {})) {
-    parsed.data.ai[metricKey][targetConfig.key][name] = value;
-  }
-
   writeStandardMetricObservations(metricName, targetConfig, normalizedScores, settings);
   markEvaluationInput(metricKey, targetConfig.key, inputHash);
-  parsed.data.ai[metricKey].updated = new Date().toISOString();
   return true;
 }
 
@@ -1547,11 +1569,8 @@ async function evaluateCharacterAwareness(targetName) {
     "Character Awareness"
   );
 
-  parsed.data.ai.characterAwareness = parsed.data.ai.characterAwareness ?? {};
-  parsed.data.ai.characterAwareness.plotThreads = plotThreads;
   writeCharacterAwarenessObservations(plotThreadConfig, plotThreads);
   markEvaluationInput("characterAwareness", "plotThreads", inputHash);
-  parsed.data.ai.characterAwareness.updated = new Date().toISOString();
   return true;
 }
 
@@ -1742,11 +1761,8 @@ async function evaluateReaderAwareness(targetName) {
     "Reader Awareness"
   );
 
-  parsed.data.ai.readerAwareness = parsed.data.ai.readerAwareness ?? {};
-  parsed.data.ai.readerAwareness[targetConfig.key] = targetScores;
   writeReaderAwarenessObservations(targetConfig, targetScores);
   markEvaluationInput("readerAwareness", targetConfig.key, inputHash);
-  parsed.data.ai.readerAwareness.updated = new Date().toISOString();
   return true;
 }
 
