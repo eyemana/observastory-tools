@@ -140,16 +140,16 @@ Set `projectMode` to `outline` when you are sketching scenes and want conservati
 
 From Obsidian, use these Templater templates:
 
-- `Templates/Queue-All-Scenes-for-Evaluation.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
-- `Templates/Queue-Current-Scene-for-Evaluation.md`: queue the full configured evaluation set for only the active scene.
-- `Templates/Queue-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
-- `Templates/Collect-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
+- `Templates/Queue-Evaluation-All-Scenes.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
+- `Templates/Queue-Evaluation-Current-Scene.md`: queue the full configured evaluation set for only the active scene.
+- `Templates/Queue-Evaluation-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
+- `Templates/Queue-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
+- `Templates/Queue-Cancel-Job.md`: cancel the latest queued or running job.
+- `Templates/Scheduler-Start.md`: start a background scheduler worker.
 - `Templates/Scheduler-Status.md`: show worker and active-job status.
-- `Templates/Start-Scheduler.md`: start a background scheduler worker.
-- `Templates/Stop-Scheduler-After-Current.md`: let the current job finish, then stop the worker.
-- `Templates/Stop-Scheduler.md`: stop the background scheduler worker immediately.
-- `Templates/Cancel-Queued-Evaluation.md`: cancel the latest queued or running job.
+- `Templates/Scheduler-Stop-After-Current.md`: let the current job finish, then stop the worker.
+- `Templates/Scheduler-Stop.md`: stop the background scheduler worker immediately.
 
 From a terminal in `observastory-tools`:
 
@@ -237,6 +237,8 @@ Scene identity comes from the filename without the `.md` extension.
 
 Story-element kind comes from folder location, and story-element identity comes from the filename without the `.md` extension. Story-element notes can use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `draft`, `archived`, or `inactive`, or excluded tags such as `no-evaluate`.
 
+Scene-level entity attention comes from Obsidian links. Link to notes such as `[[Mara Bell]]` or `[[Missing Ledger]]` in the scene body when you want the report and evaluator prompt context to treat that entity as intentionally present. You do not need root-level scene frontmatter fields like `characters`, `plotThreads`, or `arcs`.
+
 For rare scene-specific exceptions, use explicit include/exclude fields:
 
 ```yaml
@@ -320,7 +322,7 @@ The second selector controls the data lens:
 - `Reader plot`: Reader Awareness for plot threads.
 - `Reader character`: Reader Awareness for characters.
 - `Reader arc`: Reader Awareness for arcs.
-- `Story lists`: characters, plot threads, and arcs without Reader Awareness bars.
+- `Story links`: linked characters, plot threads, and arcs without Reader Awareness bars.
 
 Character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
 
@@ -512,26 +514,24 @@ Pacing, Conflict, Poetics, and Coherence are scene-only dimensions. They use the
 
 ## Truth Ledger
 
-The Truth Ledger has two lanes:
+The Truth Ledger is a generated support map. It scans configured notes, resolves `[[links]]` against known characters, plot threads, story engines, and arcs, and records concrete source evidence for authored and inferred story assertions.
 
-- **Authored claims**: hard, author-owned claim callouts that you write wherever they naturally belong.
-- **Inferred claims**: lower-authority reader-like claims inferred by the local LLM from scanned notes. These are generated for evaluator grounding and are not shown in the Truth Ledger report by default.
+- **Authored anchors**: optional `[!claim]` callouts for facts you want to pin explicitly.
+- **Inferred support**: lower-authority claims inferred by the local LLM from scanned notes, with exact evidence excerpts and resolved entities where possible.
 
-Run `Templates/Collect-Truth-Ledger.md` or:
+Run `Templates/Queue-Truth-Ledger.md` or:
 
 ```sh
 node scheduler/enqueue-truth-ledger.mjs
 node scheduler/worker.mjs --drain
 ```
 
-Claim blocks use Obsidian callout syntax:
+Most author work should be ordinary linked prose. Use authored anchors only when you want to pin a durable assertion:
 
 ```md
 > [!claim] claim.missing-ledger.location
 > truth: true
-> subject: Missing Ledger
-> plotThreads: Missing Ledger
-> The missing ledger is hidden in the storm vault.
+> The [[Missing Ledger]] is hidden in the storm vault.
 ```
 
 Supported `truth` values:
@@ -542,7 +542,7 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values and asks the local LLM for inferred claims when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored claims in Obsidian.
+The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
 
 ## Reports
 
@@ -557,7 +557,7 @@ Core report categories:
 - `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
-- `Truth Ledger`: collected author-written claims from configured notes. Inferred claims are generated into JSON for evaluator use but hidden from this report by default.
+- `Truth Ledger`: generated support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
 - `Goal Bullseye`: radar view of average goal achievement across metric families.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
@@ -612,7 +612,7 @@ The scheduler has one worker and multiple job types:
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
 
-When `scheduler.backgroundSceneScan.enabled` is true, the background worker also scans eligible scene notes and queues a small scene-evaluation job only for scene files whose author-owned input changed. This scan fingerprints scene content plus author frontmatter and ignores the generated `ai` branch, so evaluator writes do not trigger another evaluation loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-All-Scenes-for-Evaluation.md` when you intentionally want a full pass.
+When `scheduler.backgroundSceneScan.enabled` is true, the background worker also scans eligible scene notes and queues a small scene-evaluation job only for scene files whose author-owned input changed. This scan fingerprints scene content plus author frontmatter and ignores the generated `ai` branch, so evaluator writes do not trigger another evaluation loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-Evaluation-All-Scenes.md` when you intentionally want a full pass.
 
 `backgroundSceneScan.debounceMs` controls how long a changed scene must stay stable before the worker queues it. This is the guardrail for active Obsidian editing: repeated saves to the current scene update the pending fingerprint rather than spawning a burst of duplicate jobs.
 
@@ -626,7 +626,7 @@ Scene evaluation jobs are incremental by default. Each evaluator stores an input
 - `ask`: ask whether to queue Reader Awareness.
 - `auto`: queue Reader Awareness immediately.
 
-Start the background worker from Obsidian with `Templates/Start-Scheduler.md`, or from a terminal:
+Start the background worker from Obsidian with `Templates/Scheduler-Start.md`, or from a terminal:
 
 ```sh
 node scheduler/worker.mjs --watch
@@ -638,13 +638,13 @@ Check status from Obsidian with `Templates/Scheduler-Status.md`, or from a termi
 node scheduler/status.mjs
 ```
 
-Request a graceful stop after the current job from Obsidian with `Templates/Stop-Scheduler-After-Current.md`, or from a terminal:
+Request a graceful stop after the current job from Obsidian with `Templates/Scheduler-Stop-After-Current.md`, or from a terminal:
 
 ```sh
 node scheduler/stop-worker.mjs --after-current
 ```
 
-Stop the background worker immediately from Obsidian with `Templates/Stop-Scheduler.md`, or from a terminal:
+Stop the background worker immediately from Obsidian with `Templates/Scheduler-Stop.md`, or from a terminal:
 
 ```sh
 node scheduler/stop-worker.mjs
@@ -664,9 +664,9 @@ node scheduler/cancel-job.mjs --latest
 
 ## Scene Evaluation Queueing
 
-Use `Templates/Queue-All-Scenes-for-Evaluation.md` to process the configured `story.folders.scenes` folder.
+Use `Templates/Queue-Evaluation-All-Scenes.md` to process the configured `story.folders.scenes` folder.
 
-Use `Templates/Queue-Current-Scene-for-Evaluation.md` when you want the full configured evaluator set for just the active scene.
+Use `Templates/Queue-Evaluation-Current-Scene.md` when you want the full configured evaluator set for just the active scene.
 
 Queued scene evaluations skip unchanged metric/target axes by default. A skipped evaluation is counted as a successful evaluator process in the job log, but it does not call the model and does not rewrite the scene file.
 
@@ -679,6 +679,6 @@ By default, the Templater script:
 
 The worker writes job logs to `observastory-tools/.queue/logs`.
 
-Cancel a queued or running evaluation from Obsidian with `Templates/Cancel-Queued-Evaluation.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
+Cancel a queued or running job from Obsidian with `Templates/Queue-Cancel-Job.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 
-Run only Reader Awareness from Obsidian with `Templates/Queue-Reader-Awareness.md`. The full scene evaluation queue also includes Reader Awareness; this template is for targeted reruns after order changes.
+Run only Reader Awareness from Obsidian with `Templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes Reader Awareness; this template is for targeted reruns after order changes.

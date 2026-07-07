@@ -794,6 +794,7 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     truthConfig.outputPath ?? ".index/truth-ledger.json"
   );
   const partialsDir = path.join(paths.queueRoot, "partials", job.id);
+  const entities = new Map();
   const claims = [];
   const inferredClaims = [];
   const warnings = [];
@@ -867,6 +868,14 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
 
     if (result.ok && partial) {
       success++;
+      for (const entity of Array.isArray(partial.entities) ? partial.entities : []) {
+        const key = `${entity.type}:${entity.name}`;
+
+        if (!entities.has(key)) {
+          entities.set(key, entity);
+        }
+      }
+
       claims.push(...(Array.isArray(partial.claims) ? partial.claims : []));
       inferredClaims.push(
         ...(Array.isArray(partial.inferredClaims) ? partial.inferredClaims : [])
@@ -909,6 +918,11 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     generatedAt: new Date().toISOString(),
     vaultRoot,
     outputPath,
+    entityCount: entities.size,
+    entities: [...entities.values()].sort((a, b) =>
+      String(a.type ?? "").localeCompare(String(b.type ?? "")) ||
+      String(a.name ?? "").localeCompare(String(b.name ?? ""))
+    ),
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
     claims: claims.sort(sortClaims),

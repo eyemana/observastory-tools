@@ -3,7 +3,11 @@ import { fileURLToPath } from "url";
 
 import { enqueueEvaluateScenesJob } from "./queue.mjs";
 import { defaultScenesPath, getSchedulerConfig, loadConfig } from "../tool-config.mjs";
-import { getEvaluationProfile, normalizeFilterConfig } from "../evaluation-filters.mjs";
+import {
+  getEvaluationProfile,
+  listEligibleMarkdownFiles,
+  normalizeFilterConfig
+} from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
@@ -119,6 +123,11 @@ const resolvedVaultRoot = vaultRoot ? path.resolve(vaultRoot) : path.resolve(too
 const scenesFolder = explicitScenesFolder
   ? path.resolve(explicitScenesFolder)
   : path.resolve(resolvedVaultRoot, defaultScenesPath(config));
+const normalizedSceneFilters = normalizeFilterConfig(
+  mergeFilterConfig(profile.sceneFilters, sceneFilters)
+);
+const sceneCount = sceneFiles.length ||
+  listEligibleMarkdownFiles(scenesFolder, normalizedSceneFilters).length;
 
 const result = enqueueEvaluateScenesJob({
   toolRoot,
@@ -139,7 +148,7 @@ console.log(JSON.stringify({
   evaluationProfile: profile.name,
   force,
   label: presetConfig.label,
-  sceneCount: sceneFiles.length || undefined,
+  sceneCount,
   jobPath: result.jobPath,
   logPath: result.logPath
 }));

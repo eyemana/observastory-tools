@@ -134,18 +134,18 @@
   },
 
   "truthLedger": {
-    // Folder keys to scan for authored and inferred claims.
+    // Folder keys to scan for authored anchors and inferred support.
     // These names come from story.folders above, keeping the tutorial paths in one place.
     "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
 
-    // Generated JSON index used by evaluators and reports.
+    // Generated JSON index used by reports now and evaluator grounding in a later pass.
     // Relative paths are resolved from the observastory-tools folder.
     "outputPath": ".index/truth-ledger.json",
 
     "inference": {
       // When enabled, the collector asks the local LLM to infer lower-authority
-      // reader-like claims from scanned notes. These are written separately from
-      // author claims as inferredClaims and are not shown in the Truth Ledger report.
+      // support claims from scanned notes. These are written separately from
+      // authored anchors as inferredClaims and shown in the Truth Ledger report.
       "enabled": true,
 
       // Per-note cap for inferred claims.

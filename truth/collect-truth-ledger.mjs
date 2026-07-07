@@ -4,12 +4,20 @@ import crypto from "crypto";
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
-import { defaultTruthLedgerPaths, loadConfig } from "../tool-config.mjs";
+import {
+  defaultTruthLedgerPaths,
+  getStoryConfig,
+  loadConfig,
+  storyPath,
+  storyEntityTypePaths
+} from "../tool-config.mjs";
+import { listEligibleDefinitionsFromPaths } from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
 const toolRoot = path.resolve(scriptRoot, "..");
 const config = loadConfig(toolRoot);
+const storyConfig = getStoryConfig(config);
 
 const allowedTruthValues = new Set([
   "true",
@@ -237,7 +245,222 @@ function hashText(value) {
     .slice(0, 10);
 }
 
-function parseClaimBlock(block, filePath, relativePath) {
+function normalizeEntityName(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^\[\[/, "")
+    .replace(/\]\]$/, "")
+    .split("|")[0]
+    .split("#")[0]
+    .replace(/\.md$/i, "")
+    .split(/[\\/]/)
+    .pop()
+    .trim();
+}
+
+function extractWikiLinks(text) {
+  const links = [];
+  const linkPattern = /\[\[([^\]]+)\]\]/g;
+  let match;
+
+  while ((match = linkPattern.exec(text ?? "")) !== null) {
+    const rawTarget = match[1].trim();
+    const [targetPart, displayPart] = rawTarget.split("|");
+    const [pathPart, subpathPart] = targetPart.split("#");
+    const target = pathPart.trim();
+    const display = displayPart?.trim() || "";
+    const subpath = subpathPart?.trim() || "";
+    const name = normalizeEntityName(target);
+
+    if (!target || !name) {
+      continue;
+    }
+
+    links.push({
+      raw: match[0],
+      target,
+      name,
+      display,
+      subpath
+    });
+  }
+
+  return links;
+}
+
+function uniqueBy(items, keyFn) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const item of items) {
+    const key = keyFn(item);
+
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    unique.push(item);
+  }
+
+  return unique;
+}
+
+function buildEntityCatalog(vaultRoot) {
+  const entries = [];
+  const byName = new Map();
+  const elementFilters = config.evaluation?.elementFilters ?? {};
+
+  for (const [type, entityType] of Object.entries(storyConfig.entityTypes ?? {})) {
+    const definitions = listEligibleDefinitionsFromPaths(
+      vaultRoot,
+      storyEntityTypePaths(config, type).map(configuredPath => storyPath(config, configuredPath)),
+      elementFilters
+    );
+
+    for (const definition of definitions) {
+      const entry = {
+        type,
+        target: entityType.target ?? type,
+        label: entityType.label ?? type,
+        name: definition.name,
+        path: path.relative(vaultRoot, definition.filePath)
+      };
+
+      entries.push(entry);
+
+      const normalized = definition.name.toLowerCase();
+      if (!byName.has(normalized)) {
+        byName.set(normalized, []);
+      }
+
+      byName.get(normalized).push(entry);
+    }
+  }
+
+  return {
+    entries: entries.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)),
+    byName
+  };
+}
+
+function entityCatalogPromptShape(entityCatalog) {
+  const grouped = {};
+
+  for (const entry of entityCatalog.entries) {
+    grouped[entry.type] = grouped[entry.type] ?? [];
+    grouped[entry.type].push(entry.name);
+  }
+
+  return grouped;
+}
+
+function resolveEntitiesFromLinks(links, entityCatalog, source = "link") {
+  const entities = [];
+
+  for (const link of links) {
+    for (const entry of entityCatalog.byName.get(link.name.toLowerCase()) ?? []) {
+      entities.push({
+        type: entry.type,
+        target: entry.target,
+        name: entry.name,
+        source
+      });
+    }
+  }
+
+  return entities;
+}
+
+function resolveEntitiesFromField(values, entityCatalog, source) {
+  const entities = [];
+
+  for (const value of Array.isArray(values) ? values : parseListValue(values)) {
+    const name = normalizeEntityName(value);
+
+    if (!name) {
+      continue;
+    }
+
+    for (const entry of entityCatalog.byName.get(name.toLowerCase()) ?? []) {
+      entities.push({
+        type: entry.type,
+        target: entry.target,
+        name: entry.name,
+        source
+      });
+    }
+  }
+
+  return entities;
+}
+
+function uniqueEntities(entities) {
+  const byKey = new Map();
+
+  for (const entity of entities) {
+    const key = `${entity.type}:${entity.name}`;
+
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        type: entity.type,
+        target: entity.target,
+        name: entity.name,
+        source: entity.source,
+        sources: [entity.source].filter(Boolean)
+      });
+      continue;
+    }
+
+    const existing = byKey.get(key);
+    if (entity.source && !existing.sources.includes(entity.source)) {
+      existing.sources.push(entity.source);
+      existing.source = existing.sources.join(", ");
+    }
+  }
+
+  return [...byKey.values()].sort((a, b) =>
+    a.type.localeCompare(b.type) ||
+    a.name.localeCompare(b.name)
+  );
+}
+
+function normalizeLinks(links) {
+  return uniqueBy(
+    links,
+    link => `${link.target}:${link.display}:${link.subpath}`
+  ).sort((a, b) => a.name.localeCompare(b.name) || a.target.localeCompare(b.target));
+}
+
+function supportRecord({ type, filePath, relativePath, line, excerpt }) {
+  return {
+    type,
+    path: relativePath,
+    absolutePath: filePath,
+    line,
+    excerpt: normalizeWhitespace(excerpt)
+  };
+}
+
+function normalizeRelationships(rawRelationships) {
+  const relationships = Array.isArray(rawRelationships) ? rawRelationships : [];
+
+  return relationships
+    .map(relationship => ({
+      source: String(relationship?.source ?? "").trim(),
+      target: String(relationship?.target ?? "").trim(),
+      dimension: String(relationship?.dimension ?? "").trim(),
+      statement: String(relationship?.statement ?? "").trim()
+    }))
+    .filter(relationship =>
+      relationship.source ||
+      relationship.target ||
+      relationship.dimension ||
+      relationship.statement
+    );
+}
+
+function parseClaimBlock(block, filePath, relativePath, entityCatalog) {
   const fields = {};
   const statementLines = [];
   let currentListKey = null;
@@ -274,6 +497,21 @@ function parseClaimBlock(block, filePath, relativePath) {
 
   const statement = fields.statement || statementLines.join(" ").trim();
   const truth = normalizeTruthValue(fields.truth);
+  const textForLinks = [
+    statement,
+    fields.subject,
+    ...Array.from(arrayFields)
+      .flatMap(field => fields[field] ?? [])
+  ].join("\n");
+  const links = normalizeLinks(extractWikiLinks(textForLinks));
+  const entities = uniqueEntities([
+    ...resolveEntitiesFromLinks(links, entityCatalog),
+    ...resolveEntitiesFromField(fields.subject, entityCatalog, "subject"),
+    ...resolveEntitiesFromField(fields.plotThreads, entityCatalog, "plotThreads"),
+    ...resolveEntitiesFromField(fields.characters, entityCatalog, "characters"),
+    ...resolveEntitiesFromField(fields.storyEngines, entityCatalog, "storyEngines"),
+    ...resolveEntitiesFromField(fields.arcs, entityCatalog, "arcs")
+  ]);
 
   return {
     id: fields.id ?? "",
@@ -281,6 +519,9 @@ function parseClaimBlock(block, filePath, relativePath) {
     truth,
     subject: fields.subject ?? "",
     statement,
+    links,
+    entities,
+    relationships: [],
     plotThreads: fields.plotThreads ?? [],
     characters: fields.characters ?? [],
     storyEngines: fields.storyEngines ?? [],
@@ -292,11 +533,20 @@ function parseClaimBlock(block, filePath, relativePath) {
       path: relativePath,
       absolutePath: filePath,
       line: block.line
-    }
+    },
+    support: statement
+      ? [supportRecord({
+        type: "authored-claim",
+        filePath,
+        relativePath,
+        line: block.line,
+        excerpt: statement
+      })]
+      : []
   };
 }
 
-function extractClaimBlocks(filePath, vaultRoot) {
+function extractClaimBlocks(filePath, vaultRoot, entityCatalog) {
   const raw = fs.readFileSync(filePath, "utf8");
   const lines = raw.split(/\r?\n/);
   const relativePath = path.relative(vaultRoot, filePath);
@@ -322,7 +572,7 @@ function extractClaimBlocks(filePath, vaultRoot) {
       cursor++;
     }
 
-    blocks.push(parseClaimBlock(block, filePath, relativePath));
+    blocks.push(parseClaimBlock(block, filePath, relativePath, entityCatalog));
     index = cursor - 1;
   }
 
@@ -364,7 +614,7 @@ async function fetchJsonFromOllama(prompt) {
   }
 }
 
-function buildInferencePrompt(relativePath, content, inferenceConfig) {
+function buildInferencePrompt(relativePath, content, inferenceConfig, entityCatalog) {
   return `
 Return JSON only.
 Return compact valid JSON.
@@ -374,6 +624,7 @@ Do not include trailing commas.
 You are collecting lower-authority inferred truth claims from an author's note.
 These inferred claims are not authorial canon.
 Infer only claims a careful average reader could reasonably believe from this exact note.
+Use the known story entity names when a claim is clearly about a configured entity.
 Do not invent new story ideas.
 Do not add creative suggestions.
 Do not infer beyond the supplied note.
@@ -383,6 +634,9 @@ Return at most ${inferenceConfig.maxClaimsPerNote} claims.
 
 Allowed truth values:
 ${JSON.stringify([...allowedTruthValues])}
+
+Known story entities:
+${JSON.stringify(entityCatalogPromptShape(entityCatalog), null, 2)}
 
 Each evidence item must be an exact excerpt copied from the note.
 
@@ -405,6 +659,14 @@ Required JSON:
       "storyEngines": ["name"],
       "arcs": ["name"],
       "locations": ["name"],
+      "relationships": [
+        {
+          "source": "entity name",
+          "target": "entity name",
+          "dimension": "knowledge|belief|trust|conflict|ownership|location|cause|other",
+          "statement": "short relationship assertion"
+        }
+      ],
       "evidence": ["exact excerpt"]
     }
   ]
@@ -412,7 +674,7 @@ Required JSON:
 `;
 }
 
-function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index) {
+function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index, entityCatalog) {
   if (!rawClaim || typeof rawClaim !== "object") {
     return null;
   }
@@ -428,6 +690,37 @@ function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index
 
   const subject = String(rawClaim.subject ?? "").trim();
   const line = lineForExcerpt(content, evidence[0]);
+  const legacyFields = {
+    plotThreads: Array.isArray(rawClaim.plotThreads) ? rawClaim.plotThreads.filter(Boolean) : [],
+    characters: Array.isArray(rawClaim.characters) ? rawClaim.characters.filter(Boolean) : [],
+    storyEngines: Array.isArray(rawClaim.storyEngines) ? rawClaim.storyEngines.filter(Boolean) : [],
+    arcs: Array.isArray(rawClaim.arcs) ? rawClaim.arcs.filter(Boolean) : []
+  };
+  const textForLinks = [
+    statement,
+    subject,
+    ...evidence,
+    ...legacyFields.plotThreads,
+    ...legacyFields.characters,
+    ...legacyFields.storyEngines,
+    ...legacyFields.arcs
+  ].join("\n");
+  const links = normalizeLinks(extractWikiLinks(textForLinks));
+  const entities = uniqueEntities([
+    ...resolveEntitiesFromLinks(links, entityCatalog),
+    ...resolveEntitiesFromField(subject, entityCatalog, "subject"),
+    ...resolveEntitiesFromField(legacyFields.plotThreads, entityCatalog, "plotThreads"),
+    ...resolveEntitiesFromField(legacyFields.characters, entityCatalog, "characters"),
+    ...resolveEntitiesFromField(legacyFields.storyEngines, entityCatalog, "storyEngines"),
+    ...resolveEntitiesFromField(legacyFields.arcs, entityCatalog, "arcs")
+  ]);
+  const support = evidence.map(excerpt => supportRecord({
+    type: "inferred-evidence",
+    filePath,
+    relativePath,
+    line: lineForExcerpt(content, excerpt),
+    excerpt
+  }));
 
   return {
     id: `inferred.${slugify(relativePath)}.${hashText(`${statement}:${index}`)}`,
@@ -436,14 +729,18 @@ function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index
     subject,
     statement,
     confidence,
-    plotThreads: Array.isArray(rawClaim.plotThreads) ? rawClaim.plotThreads.filter(Boolean) : [],
-    characters: Array.isArray(rawClaim.characters) ? rawClaim.characters.filter(Boolean) : [],
-    storyEngines: Array.isArray(rawClaim.storyEngines) ? rawClaim.storyEngines.filter(Boolean) : [],
-    arcs: Array.isArray(rawClaim.arcs) ? rawClaim.arcs.filter(Boolean) : [],
+    links,
+    entities,
+    relationships: normalizeRelationships(rawClaim.relationships),
+    plotThreads: legacyFields.plotThreads,
+    characters: legacyFields.characters,
+    storyEngines: legacyFields.storyEngines,
+    arcs: legacyFields.arcs,
     locations: Array.isArray(rawClaim.locations) ? rawClaim.locations.filter(Boolean) : [],
     subjects: [],
     tags: [],
     evidence,
+    support,
     source: {
       path: relativePath,
       absolutePath: filePath,
@@ -452,7 +749,7 @@ function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index
   };
 }
 
-async function inferClaimsFromFile(filePath, vaultRoot, inferenceConfig) {
+async function inferClaimsFromFile(filePath, vaultRoot, inferenceConfig, entityCatalog) {
   const content = markdownBody(filePath);
 
   if (!content) {
@@ -461,25 +758,25 @@ async function inferClaimsFromFile(filePath, vaultRoot, inferenceConfig) {
 
   const relativePath = path.relative(vaultRoot, filePath);
   const response = await fetchJsonFromOllama(
-    buildInferencePrompt(relativePath, content, inferenceConfig)
+    buildInferencePrompt(relativePath, content, inferenceConfig, entityCatalog)
   );
   const rawClaims = Array.isArray(response.claims) ? response.claims : [];
 
   return rawClaims
     .map((rawClaim, index) =>
-      normalizeInferredClaim(rawClaim, filePath, relativePath, content, index)
+      normalizeInferredClaim(rawClaim, filePath, relativePath, content, index, entityCatalog)
     )
     .filter(Boolean)
     .filter(claim => claim.confidence >= inferenceConfig.minConfidence);
 }
 
-async function inferClaims(files, vaultRoot, inferenceConfig, warnings) {
+async function inferClaims(files, vaultRoot, inferenceConfig, warnings, entityCatalog) {
   const inferredClaims = [];
 
   for (const filePath of files) {
     try {
       inferredClaims.push(
-        ...(await inferClaimsFromFile(filePath, vaultRoot, inferenceConfig))
+        ...(await inferClaimsFromFile(filePath, vaultRoot, inferenceConfig, entityCatalog))
       );
     } catch (error) {
       warnings.push(
@@ -585,23 +882,26 @@ async function main() {
   }
 
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
+  const entityCatalog = buildEntityCatalog(vaultRoot);
   const files = explicitFiles.length > 0
     ? explicitFiles
     : [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
   const claims = files
-    .flatMap(filePath => extractClaimBlocks(filePath, vaultRoot))
+    .flatMap(filePath => extractClaimBlocks(filePath, vaultRoot, entityCatalog))
     .sort(sortClaims);
   const { errors, warnings } = validateClaims(
     claims,
     explicitFiles.length > 0 ? explicitFiles : scanRoots
   );
   const inferredClaims = errors.length === 0 && inferenceConfig.enabled
-    ? await inferClaims(files, vaultRoot, inferenceConfig, warnings)
+    ? await inferClaims(files, vaultRoot, inferenceConfig, warnings, entityCatalog)
     : [];
   const index = {
     generatedAt: new Date().toISOString(),
     vaultRoot,
     outputPath,
+    entityCount: entityCatalog.entries.length,
+    entities: entityCatalog.entries,
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
     claims,

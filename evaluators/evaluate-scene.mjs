@@ -1062,6 +1062,48 @@ function getTargetNames(targetConfig) {
   return getTargetDefinitions(targetConfig).map((definition) => definition.name);
 }
 
+function normalizeLinkTargetName(value) {
+  return String(value ?? "")
+    .split("|")[0]
+    .split("#")[0]
+    .trim()
+    .replace(/\.md$/i, "")
+    .split(/[\\/]/)
+    .pop();
+}
+
+function linkedTargetEntries(content, targetNames) {
+  const canonicalNames = new Map(
+    targetNames.map((name) => [name.toLowerCase(), name])
+  );
+  const counts = new Map();
+  const linkPattern = /\[\[([^\]]+)\]\]/g;
+  let match;
+
+  while ((match = linkPattern.exec(content ?? "")) !== null) {
+    const linkedName = normalizeLinkTargetName(match[1]);
+    const canonicalName = canonicalNames.get(linkedName.toLowerCase());
+
+    if (!canonicalName) {
+      continue;
+    }
+
+    counts.set(canonicalName, (counts.get(canonicalName) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function formatLinkedTargetEntries(entries) {
+  if (entries.length === 0) {
+    return "None.";
+  }
+
+  return JSON.stringify(entries, null, 2);
+}
+
 function numericFrontmatter(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
@@ -1159,6 +1201,9 @@ function listPriorScenes(currentFilePath, currentScene) {
   const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getStoryOrder(currentScene);
   const currentName = path.basename(currentFilePath);
+  const characterNames = getTargetNames(getTargetConfig("Character"));
+  const plotThreadNames = getTargetNames(getTargetConfig("Plot Thread"));
+  const arcNames = getTargetNames(getTargetConfig("Arc"));
 
   return fs.readdirSync(scenesFolder, { withFileTypes: true })
     .filter(entry => entry.isFile())
@@ -1173,9 +1218,9 @@ function listPriorScenes(currentFilePath, currentScene) {
         name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        characters: scene.data.characters ?? [],
-        plotThreads: scene.data.plotThreads ?? [],
-        arcs: scene.data.arcs ?? [],
+        characters: linkedTargetEntries(scene.content, characterNames).map((entry) => entry.name),
+        plotThreads: linkedTargetEntries(scene.content, plotThreadNames).map((entry) => entry.name),
+        arcs: linkedTargetEntries(scene.content, arcNames).map((entry) => entry.name),
         content: scene.content.trim()
       };
     })
@@ -1187,6 +1232,9 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
   const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getChronologyOrder(currentScene);
   const currentName = path.basename(currentFilePath);
+  const characterNames = getTargetNames(getTargetConfig("Character"));
+  const plotThreadNames = getTargetNames(getTargetConfig("Plot Thread"));
+  const arcNames = getTargetNames(getTargetConfig("Arc"));
 
   return fs.readdirSync(scenesFolder, { withFileTypes: true })
     .filter(entry => entry.isFile())
@@ -1201,9 +1249,9 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
         name: path.basename(entry.name, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        characters: scene.data.characters ?? [],
-        plotThreads: scene.data.plotThreads ?? [],
-        arcs: scene.data.arcs ?? [],
+        characters: linkedTargetEntries(scene.content, characterNames).map((entry) => entry.name),
+        plotThreads: linkedTargetEntries(scene.content, plotThreadNames).map((entry) => entry.name),
+        arcs: linkedTargetEntries(scene.content, arcNames).map((entry) => entry.name),
         content: scene.content.trim()
       };
     })
@@ -1265,6 +1313,9 @@ function buildStandardMetricPrompt(
     metricName
   );
   const calibrationGuidance = calibrationPromptGuidance(metricName);
+  const linkedTargets = targetConfig.sceneOnly
+    ? []
+    : linkedTargetEntries(parsed.content, targetNames);
 
   if (targetConfig.sceneOnly) {
     return `
@@ -1307,6 +1358,9 @@ Do not include markdown.
 
 ${targetConfig.pluralLabel} to evaluate:
 ${JSON.stringify(targetNames, null, 2)}
+
+${targetConfig.pluralLabel} explicitly linked in this scene:
+${formatLinkedTargetEntries(linkedTargets)}
 
 You must return one delta object for every listed ${targetConfig.label}.
 Use EXACTLY the listed names as JSON keys.
@@ -1423,6 +1477,9 @@ function buildCharacterAwarenessPrompt(
   plotThreadDefinitions,
   priorChronologyContext
 ) {
+  const linkedCharacters = linkedTargetEntries(parsed.content, characterNames);
+  const linkedPlotThreads = linkedTargetEntries(parsed.content, plotThreadNames);
+
   return `
 Return JSON only.
 Return compact valid JSON.
@@ -1437,6 +1494,12 @@ ${JSON.stringify(characterNames, null, 2)}
 
 Plot Threads:
 ${JSON.stringify(plotThreadNames, null, 2)}
+
+Characters explicitly linked in this scene:
+${formatLinkedTargetEntries(linkedCharacters)}
+
+Plot threads explicitly linked in this scene:
+${formatLinkedTargetEntries(linkedPlotThreads)}
 
 Use EXACTLY the listed plot thread names as JSON keys.
 Use EXACTLY the listed character names as JSON keys.
@@ -1642,6 +1705,7 @@ function getReaderAwarenessGuidance(targetConfig) {
 
 function buildReaderAwarenessPrompt(targetConfig, targetNames, targetDefinitions, priorSceneContext) {
   const guidance = getReaderAwarenessGuidance(targetConfig);
+  const linkedTargets = linkedTargetEntries(parsed.content, targetNames);
 
   return `
 Return JSON only.
@@ -1654,6 +1718,9 @@ Evaluate reader awareness of ${guidance.subject} for this scene.
 
 ${targetConfig.pluralLabel}:
 ${JSON.stringify(targetNames, null, 2)}
+
+${targetConfig.pluralLabel} explicitly linked in this scene:
+${formatLinkedTargetEntries(linkedTargets)}
 
 Use EXACTLY the listed ${targetConfig.label} names as JSON keys.
 Do not shorten names.

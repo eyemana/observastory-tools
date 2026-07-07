@@ -123,6 +123,36 @@ module.exports = async (tp) => {
     return path.join(basePath, storyRoot, scenesFolder);
   }
 
+  function walkMarkdownFiles(root) {
+    if (!root || !fs.existsSync(root)) {
+      return [];
+    }
+
+    const stat = fs.statSync(root);
+
+    if (stat.isFile()) {
+      return root.endsWith(".md") ? [root] : [];
+    }
+
+    const files = [];
+
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
+
+      const entryPath = path.join(root, entry.name);
+
+      if (entry.isDirectory()) {
+        files.push(...walkMarkdownFiles(entryPath));
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        files.push(entryPath);
+      }
+    }
+
+    return files;
+  }
+
   function readJsonFile(filePath) {
     try {
       return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -239,10 +269,8 @@ module.exports = async (tp) => {
   const absoluteFolderPath = configuredScenesFolder(config, basePath);
   const folderPath = path.relative(basePath, absoluteFolderPath);
 
-  const files = app.vault
-    .getMarkdownFiles()
-    .filter(file => file.parent?.path === folderPath)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = walkMarkdownFiles(absoluteFolderPath)
+    .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 
   const confirmed = await tp.system.suggester(
     [`Queue Reader Awareness for ${files.length} scenes in ${folderPath}`, "Cancel"],
