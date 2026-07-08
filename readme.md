@@ -145,9 +145,10 @@ From Obsidian, use these Templater templates:
 - `Templates/Queue-Evaluation-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
 - `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
 - `Templates/Queue-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
+- `Templates/Queue-Stale-Work.md`: queue only work that Processing Status can identify as stale, missing, or legacy.
 - `Templates/Queue-Cancel-Job.md`: cancel the latest queued or running job.
 - `Templates/Scheduler-Start.md`: start a background scheduler worker.
-- `Templates/Scheduler-Status.md`: show worker and active-job status.
+- `Templates/Scheduler-Status.md`: show worker and active-job status, and refresh `observastory-tools/.index/processing-status.json`.
 - `Templates/Scheduler-Stop-After-Current.md`: let the current job finish, then stop the worker.
 - `Templates/Scheduler-Stop.md`: stop the background scheduler worker immediately.
 
@@ -640,6 +641,12 @@ Check status from Obsidian with `Templates/Scheduler-Status.md`, or from a termi
 node scheduler/status.mjs
 ```
 
+Refresh the generated Processing Status index from a terminal:
+
+```sh
+node status/freshness.mjs --vault-root "C:\path\to\your\vault" --write
+```
+
 Request a graceful stop after the current job from Obsidian with `Templates/Scheduler-Stop-After-Current.md`, or from a terminal:
 
 ```sh
@@ -684,3 +691,22 @@ The worker writes job logs to `observastory-tools/.queue/logs`.
 Cancel a queued or running job from Obsidian with `Templates/Queue-Cancel-Job.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 
 Run only Reader Awareness from Obsidian with `Templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes Reader Awareness; this template is for targeted reruns after order changes.
+
+## Processing Status and Stale Work
+
+`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `Reports/Processing Status.md`.
+
+The status index compares author-owned fingerprints instead of modification times:
+
+- scene fingerprints ignore generated `ai` frontmatter so evaluator writes do not trigger another loop
+- Truth Ledger sources are compared against source fingerprints stored in `.index/truth-ledger.json`
+- chronology metadata is compared against hashes of `chronology_label` and `chronology_value`
+- evaluator axes are marked `fresh`, `stale`, `pending`, `unknown`, `never-run`, or `legacy` from stored `ai.evaluationInputs`
+
+Use `Templates/Queue-Stale-Work.md` to queue only currently actionable work. From a terminal, preview the plan without creating jobs:
+
+```sh
+node scheduler/enqueue-stale-work.mjs --vault-root "C:\path\to\your\vault" --dry-run
+```
+
+`unknown` scene axes mean this machine has not written a background fingerprint baseline yet. They are visible in status, but `Queue-Stale-Work` does not treat them as stale.

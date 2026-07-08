@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import matter from "gray-matter";
 
 import { parseChronologyValue } from "./chronology-utils.mjs";
+import { chronologyInputHash } from "../fingerprints.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -72,6 +73,7 @@ function buildResult(filePath, vaultRoot, parsed, dryRun) {
     precision: parsedValue.precision,
     parser: parsedValue.parser,
     generatedAt: new Date().toISOString(),
+    inputHash: chronologyInputHash(parsed.data),
     sourceFields: [
       "chronology_label",
       "chronology_value"

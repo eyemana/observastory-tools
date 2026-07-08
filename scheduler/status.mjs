@@ -8,6 +8,10 @@ import {
   readJob,
   readWorkerStop
 } from "./queue.mjs";
+import {
+  buildFreshnessReport,
+  writeFreshnessReport
+} from "../status/freshness.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
@@ -32,6 +36,16 @@ function readLock(lockFile) {
   } catch {
     return null;
   }
+}
+
+function readOption(name) {
+  const index = process.argv.indexOf(name);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  return process.argv[index + 1];
 }
 
 function listJobFiles(paths) {
@@ -77,6 +91,36 @@ function formatJob(job) {
   return `${job.status.padEnd(9)} ${job.label ?? job.type} ${count}${currentText}`;
 }
 
+function summarizeFreshness(report) {
+  return {
+    generatedAt: report.generatedAt,
+    outputPath: report.outputPath,
+    scenes: {
+      total: report.scenes.total,
+      fingerprintCounts: report.scenes.fingerprintCounts,
+      axisCounts: report.scenes.axisCounts,
+      staleSceneCount: report.scenes.staleSceneFiles.length,
+      pendingSceneCount: report.scenes.pendingSceneFiles.length
+    },
+    truthLedger: {
+      total: report.truthLedger.total,
+      generatedAt: report.truthLedger.generatedAt,
+      counts: report.truthLedger.counts,
+      needsUpdate: report.truthLedger.needsUpdate
+    },
+    chronology: {
+      total: report.chronology.total,
+      counts: report.chronology.counts,
+      needsUpdate: report.chronology.needsUpdate
+    },
+    recommendations: {
+      queueSceneEvaluation: report.recommendations.queueSceneEvaluation,
+      queueTruthLedger: report.recommendations.queueTruthLedger,
+      queueChronologyIndex: report.recommendations.queueChronologyIndex
+    }
+  };
+}
+
 const schedulerConfig = getSchedulerConfig(toolRoot);
 const paths = getQueuePaths(toolRoot, schedulerConfig);
 const lock = readLock(paths.lockFile);
@@ -89,6 +133,19 @@ const recentJobs = jobs
   .filter(job => !["queued", "running"].includes(job.status))
   .slice(-5)
   .reverse();
+let processingStatus = null;
+let processingStatusError = null;
+
+try {
+  const options = { vaultRoot: readOption("--vault-root") };
+  const report = process.argv.includes("--write-processing-status")
+    ? writeFreshnessReport(toolRoot, options)
+    : buildFreshnessReport(toolRoot, options);
+  processingStatus = summarizeFreshness(report);
+} catch (error) {
+  processingStatusError = error.message;
+}
+
 const result = {
   worker: {
     status: running ? "running" : lock ? "stale-lock" : "not-running",
@@ -102,7 +159,9 @@ const result = {
     running: activeJobs.filter(job => job.status === "running").length,
     active: activeJobs,
     recent: recentJobs
-  }
+  },
+  processingStatus,
+  processingStatusError
 };
 
 if (process.argv.includes("--json")) {
@@ -128,5 +187,28 @@ if (process.argv.includes("--json")) {
     for (const job of recentJobs) {
       console.log(`- ${formatJob(job)}`);
     }
+  }
+
+  if (processingStatus) {
+    const axes = processingStatus.scenes.axisCounts;
+    const truth = processingStatus.truthLedger.counts;
+    const chronology = processingStatus.chronology.counts;
+
+    console.log("Processing status:");
+    console.log(
+      `- Scene axes: ${axes.fresh} fresh, ${axes.stale} stale, ${axes.pending} pending, ${axes.unknown ?? 0} unknown, ${axes["never-run"]} never run, ${axes.legacy} legacy`
+    );
+    console.log(
+      `- Truth Ledger: ${truth.fresh} fresh, ${truth.stale} stale, ${truth["never-run"]} never run, ${truth.legacy} legacy, ${truth.deleted} deleted`
+    );
+    console.log(
+      `- Chronology: ${chronology.fresh} fresh, ${chronology.stale} stale, ${chronology["never-run"]} never run, ${chronology.legacy} legacy, ${chronology.invalid} invalid`
+    );
+
+    if (process.argv.includes("--write-processing-status")) {
+      console.log(`- Report data: ${processingStatus.outputPath}`);
+    }
+  } else if (processingStatusError) {
+    console.log(`Processing status unavailable: ${processingStatusError}`);
   }
 }

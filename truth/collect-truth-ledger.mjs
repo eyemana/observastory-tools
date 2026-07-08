@@ -12,6 +12,7 @@ import {
   storyEntityTypePaths
 } from "../tool-config.mjs";
 import { listEligibleDefinitionsFromPaths } from "../evaluation-filters.mjs";
+import { authorMarkdownFingerprint } from "../fingerprints.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -896,10 +897,17 @@ async function main() {
   const inferredClaims = errors.length === 0 && inferenceConfig.enabled
     ? await inferClaims(files, vaultRoot, inferenceConfig, warnings, entityCatalog)
     : [];
+  const generatedAt = new Date().toISOString();
+  const sourceFingerprints = files.map(filePath => ({
+    path: path.relative(vaultRoot, filePath),
+    fingerprint: authorMarkdownFingerprint(filePath),
+    updatedAt: generatedAt
+  }));
   const index = {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     vaultRoot,
     outputPath,
+    sourceFingerprints,
     entityCount: entityCatalog.entries.length,
     entities: entityCatalog.entries,
     claimCount: claims.length,

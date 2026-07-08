@@ -108,7 +108,10 @@ module.exports = async () => {
       nodePath,
       [
         statusScript,
-        "--json"
+        "--json",
+        "--vault-root",
+        basePath,
+        "--write-processing-status"
       ],
       {
         encoding: "utf8",
@@ -119,13 +122,19 @@ module.exports = async () => {
     const status = JSON.parse(rawOutput);
     const active = status.queue?.active ?? [];
     const stopText = status.stopRequest ? " | stop after current requested" : "";
+    const processing = status.processingStatus;
+    const staleAxes = processing?.scenes?.axisCounts?.stale ?? 0;
+    const neverRunAxes = processing?.scenes?.axisCounts?.["never-run"] ?? 0;
+    const processingText = processing
+      ? ` Processing: ${staleAxes} stale, ${neverRunAxes} never-run axes.`
+      : "";
 
     if (active.length === 0) {
-      new Notice(`Scheduler ${status.worker.status}${stopText}. No active jobs.`);
+      new Notice(`Scheduler ${status.worker.status}${stopText}. No active jobs.${processingText}`);
       return "";
     }
 
-    new Notice(`Scheduler ${status.worker.status}${stopText}. ${formatJob(active[0])}`);
+    new Notice(`Scheduler ${status.worker.status}${stopText}. ${formatJob(active[0])}${processingText}`);
   } catch (error) {
     new Notice("Failed to read scheduler status. See developer console.");
     console.error(error.stdout?.toString() || "");
