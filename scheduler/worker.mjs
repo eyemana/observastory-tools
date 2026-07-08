@@ -14,7 +14,8 @@ import {
 } from "../tool-config.mjs";
 import {
   getEvaluationProfile,
-  listEligibleMarkdownFiles
+  listEligibleMarkdownFiles,
+  mergeFilterConfigs
 } from "../evaluation-filters.mjs";
 import {
   claimJob,
@@ -515,39 +516,6 @@ async function runChronologyIndexer(args, logPath, paths, jobId) {
   });
 }
 
-function meaningfulFilterOverrides(filters = {}) {
-  return {
-    includeStatuses: Array.isArray(filters.includeStatuses) ? filters.includeStatuses : [],
-    excludeStatuses: Array.isArray(filters.excludeStatuses) ? filters.excludeStatuses : [],
-    includeTags: Array.isArray(filters.includeTags) ? filters.includeTags : [],
-    excludeTags: Array.isArray(filters.excludeTags) ? filters.excludeTags : []
-  };
-}
-
-function mergeFilters(base = {}, override = {}) {
-  const normalizedOverride = meaningfulFilterOverrides(override);
-
-  return {
-    ...base,
-    includeStatuses: [
-      ...(Array.isArray(base.includeStatuses) ? base.includeStatuses : []),
-      ...normalizedOverride.includeStatuses
-    ],
-    excludeStatuses: [
-      ...(Array.isArray(base.excludeStatuses) ? base.excludeStatuses : []),
-      ...normalizedOverride.excludeStatuses
-    ],
-    includeTags: [
-      ...(Array.isArray(base.includeTags) ? base.includeTags : []),
-      ...normalizedOverride.includeTags
-    ],
-    excludeTags: [
-      ...(Array.isArray(base.excludeTags) ? base.excludeTags : []),
-      ...normalizedOverride.excludeTags
-    ]
-  };
-}
-
 function getJobSceneFiles(job, fullConfig) {
   if (Array.isArray(job.sceneFiles) && job.sceneFiles.length > 0) {
     return job.sceneFiles
@@ -558,7 +526,7 @@ function getJobSceneFiles(job, fullConfig) {
   }
 
   const profile = getEvaluationProfile(fullConfig, job.evaluationProfile);
-  const sceneFilters = mergeFilters(profile.sceneFilters, job.sceneFilters);
+  const sceneFilters = mergeFilterConfigs(profile.sceneFilters, job.sceneFilters);
 
   return listEligibleMarkdownFiles(job.scenesFolder, sceneFilters);
 }

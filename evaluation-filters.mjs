@@ -17,6 +17,10 @@ export function asArray(value) {
     return value.filter((item) => item !== null && item !== undefined);
   }
 
+  if (value instanceof Set) {
+    return [...value].filter((item) => item !== null && item !== undefined);
+  }
+
   if (typeof value === "string") {
     return value
       .split(/[,\s]+/)
@@ -58,6 +62,54 @@ export function normalizeFilterConfig(filters = {}) {
     excludeStatuses,
     includeTags,
     excludeTags
+  };
+}
+
+function setToArray(set) {
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+export function mergeFilterConfigs(base = {}, override = {}) {
+  const normalizedBase = normalizeFilterConfig(base);
+  const normalizedOverride = normalizeFilterConfig(override);
+  const includeStatuses = new Set([
+    ...normalizedBase.includeStatuses,
+    ...normalizedOverride.includeStatuses
+  ]);
+  const excludeStatuses = new Set([
+    ...normalizedBase.excludeStatuses,
+    ...normalizedOverride.excludeStatuses
+  ]);
+  const includeTags = new Set([
+    ...normalizedBase.includeTags,
+    ...normalizedOverride.includeTags
+  ]);
+  const excludeTags = new Set([
+    ...normalizedBase.excludeTags,
+    ...normalizedOverride.excludeTags
+  ]);
+
+  for (const status of normalizedOverride.includeStatuses) {
+    excludeStatuses.delete(status);
+  }
+
+  for (const status of normalizedOverride.excludeStatuses) {
+    includeStatuses.delete(status);
+  }
+
+  for (const tag of normalizedOverride.includeTags) {
+    excludeTags.delete(tag);
+  }
+
+  for (const tag of normalizedOverride.excludeTags) {
+    includeTags.delete(tag);
+  }
+
+  return {
+    includeStatuses: setToArray(includeStatuses),
+    excludeStatuses: setToArray(excludeStatuses),
+    includeTags: setToArray(includeTags),
+    excludeTags: setToArray(excludeTags)
   };
 }
 
@@ -120,14 +172,14 @@ export function getEvaluationProfile(config, name) {
 
   return {
     name: profileName,
-    elementFilters: {
-      ...evaluationConfig.elementFilters,
-      ...(profile.elementFilters ?? {})
-    },
-    sceneFilters: {
-      ...evaluationConfig.sceneFilters,
-      ...(profile.sceneFilters ?? {})
-    }
+    elementFilters: mergeFilterConfigs(
+      evaluationConfig.elementFilters,
+      profile.elementFilters
+    ),
+    sceneFilters: mergeFilterConfigs(
+      evaluationConfig.sceneFilters,
+      profile.sceneFilters
+    )
   };
 }
 
