@@ -141,6 +141,10 @@
     // Relative paths are resolved from the observastory-tools folder.
     "outputPath": ".index/truth-ledger.json",
 
+    // Per-note generated partial cache. Unchanged notes reuse cached authored/inferred output.
+    // Relative paths are resolved from observastory-tools.
+    "cachePath": ".queue/truth-ledger-cache.json",
+
     "inference": {
       // When enabled, the collector asks the local LLM to infer lower-authority
       // support claims from scanned notes. These are written separately from

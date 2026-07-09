@@ -10,13 +10,18 @@ import {
   defaultChronologyPaths,
   defaultTruthLedgerPaths,
   getSchedulerConfig,
-  loadConfig
+  getStoryConfig,
+  loadConfig,
+  storyEntityTypePaths,
+  storyPath
 } from "../tool-config.mjs";
 import {
   getEvaluationProfile,
+  listEligibleDefinitionsFromPaths,
   listEligibleMarkdownFiles,
   mergeFilterConfigs
 } from "../evaluation-filters.mjs";
+import { authorMarkdownFingerprint } from "../fingerprints.mjs";
 import {
   claimJob,
   clearWorkerStop,
@@ -39,6 +44,7 @@ const toolRoot = path.join(schedulerRoot, "..");
 const evaluatorPath = path.join(toolRoot, "evaluators", "evaluate-scene.mjs");
 const truthCollectorPath = path.join(toolRoot, "truth", "collect-truth-ledger.mjs");
 const chronologyIndexerPath = path.join(toolRoot, "chronology", "index-scene.mjs");
+const TRUTH_LEDGER_PARTIAL_CACHE_VERSION = 1;
 
 class JobCanceledError extends Error {
   constructor(message = "Job canceled.") {
@@ -75,6 +81,44 @@ function logLine(logPath, message = "") {
   const line = `[${new Date().toISOString()}] ${message}\n`;
   appendLog(logPath, line);
   console.log(message);
+}
+
+function isPlainObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function stableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(stableValue);
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.keys(value)
+    .sort((a, b) => a.localeCompare(b))
+    .reduce((result, key) => {
+      result[key] = stableValue(value[key]);
+      return result;
+    }, {});
+}
+
+function stableHash(value) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(stableValue(value)))
+    .digest("hex");
+}
+
+function clampNumber(value, min, max, fallback = 0) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, number));
 }
 
 function readJsonFile(filePath, fallback) {
@@ -615,6 +659,100 @@ function findDuplicateClaimErrors(claims) {
   return errors;
 }
 
+function truthLedgerCachePath(paths, truthConfig) {
+  const configured = truthConfig.cachePath ?? ".queue/truth-ledger-cache.json";
+
+  return path.isAbsolute(configured)
+    ? configured
+    : path.join(toolRoot, configured);
+}
+
+function normalizeTruthLedgerCache(cache) {
+  if (!cache || cache.version !== TRUTH_LEDGER_PARTIAL_CACHE_VERSION || !isPlainObject(cache.entries)) {
+    return {
+      version: TRUTH_LEDGER_PARTIAL_CACHE_VERSION,
+      entries: {}
+    };
+  }
+
+  return cache;
+}
+
+function truthLedgerInferenceSettings(fullConfig, truthConfig, infer) {
+  return {
+    enabled: infer !== false,
+    model: infer === false ? null : fullConfig.model,
+    maxClaimsPerNote: Math.max(0, Number(truthConfig.inference?.maxClaimsPerNote) || 5),
+    minConfidence: clampNumber(truthConfig.inference?.minConfidence, 0, 10, 6)
+  };
+}
+
+function truthLedgerEntityCatalogFingerprint(fullConfig, vaultRoot) {
+  const storyConfig = getStoryConfig(fullConfig);
+  const elementFilters = fullConfig.evaluation?.elementFilters ?? {};
+  const entries = [];
+
+  for (const [type, entityType] of Object.entries(storyConfig.entityTypes ?? {})) {
+    const definitions = listEligibleDefinitionsFromPaths(
+      vaultRoot,
+      storyEntityTypePaths(fullConfig, type).map(configuredPath =>
+        storyPath(fullConfig, configuredPath)
+      ),
+      elementFilters
+    );
+
+    for (const definition of definitions) {
+      entries.push({
+        type,
+        target: entityType.target ?? type,
+        label: entityType.label ?? type,
+        name: definition.name,
+        path: path.relative(vaultRoot, definition.filePath),
+        content: definition.content
+      });
+    }
+  }
+
+  return stableHash({
+    version: 1,
+    entries: entries.sort((a, b) =>
+      a.type.localeCompare(b.type) ||
+      a.name.localeCompare(b.name) ||
+      a.path.localeCompare(b.path)
+    )
+  });
+}
+
+function truthLedgerPartialCacheKey({
+  relativePath,
+  fingerprint,
+  inferenceSettings,
+  entityCatalogFingerprint
+}) {
+  return stableHash({
+    version: TRUTH_LEDGER_PARTIAL_CACHE_VERSION,
+    relativePath,
+    fingerprint,
+    inferenceSettings,
+    entityCatalogFingerprint
+  });
+}
+
+function mergeTruthLedgerPartial(partial, entities, claims, inferredClaims, warnings) {
+  for (const entity of Array.isArray(partial.entities) ? partial.entities : []) {
+    const key = `${entity.type}:${entity.name}`;
+
+    if (!entities.has(key)) {
+      entities.set(key, entity);
+    }
+  }
+
+  claims.push(...(Array.isArray(partial.claims) ? partial.claims : []));
+  inferredClaims.push(
+    ...(Array.isArray(partial.inferredClaims) ? partial.inferredClaims : [])
+  );
+  warnings.push(...(Array.isArray(partial.warnings) ? partial.warnings : []));
+}
 async function processEvaluateScenesJob(jobPath, job, schedulerConfig, paths) {
   const logPath = path.join(paths.logsDir, `${job.id}.log`);
   const throttleMs = Math.max(0, Number(schedulerConfig.throttleMs) || 0);
@@ -762,6 +900,14 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     truthConfig.outputPath ?? ".index/truth-ledger.json"
   );
   const partialsDir = path.join(paths.queueRoot, "partials", job.id);
+  const cachePath = truthLedgerCachePath(paths, truthConfig);
+  const cache = normalizeTruthLedgerCache(readJsonFile(cachePath, null));
+  const inferenceSettings = truthLedgerInferenceSettings(fullConfig, truthConfig, job.infer);
+  const entityCatalogFingerprint = truthLedgerEntityCatalogFingerprint(fullConfig, vaultRoot);
+  const fileFingerprints = new Map(
+    files.map(filePath => [filePath, authorMarkdownFingerprint(filePath)])
+  );
+  const activeRelativePaths = new Set(files.map(filePath => path.relative(vaultRoot, filePath)));
   const entities = new Map();
   const claims = [];
   const inferredClaims = [];
@@ -769,13 +915,14 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   const failures = [];
   let success = 0;
   let failed = 0;
+  let cached = 0;
 
   fs.mkdirSync(partialsDir, { recursive: true });
-
   logLine(logPath, `Starting truth ledger job ${job.id}`);
   logLine(logPath, `Vault root: ${vaultRoot}`);
   logLine(logPath, `Found ${files.length} note files.`);
   logLine(logPath, `Inference: ${job.infer === false ? "off" : "on"}`);
+  logLine(logPath, `Partial cache: ${cachePath}`);
   logLine(logPath, `Throttle: ${throttleMs}ms`);
 
   job.progress = {
@@ -807,61 +954,78 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     job.updatedAt = new Date().toISOString();
     writeJob(jobPath, job);
 
-    const result = await runTruthCollector(
-      [
-        "--vault-root",
-        vaultRoot,
-        "--file",
-        filePath,
-        "--output",
-        partialPath,
-        "--json",
-        job.infer === false ? "--no-infer" : "--infer"
-      ],
-      logPath,
-      paths,
-      job.id
-    );
-
-    if (result.canceled) {
-      throw new JobCanceledError();
-    }
-
+    const fingerprint = fileFingerprints.get(filePath);
+    const cacheKey = truthLedgerPartialCacheKey({
+      relativePath,
+      fingerprint,
+      inferenceSettings,
+      entityCatalogFingerprint
+    });
+    const cachedEntry = cache.entries[relativePath];
     let partial = null;
-    try {
-      partial = JSON.parse(result.stdout);
-    } catch {
-      // Leave partial as null; the failure record below captures the process output.
-    }
+    let result = null;
+    let usedCache = false;
 
-    if (result.ok && partial) {
-      success++;
-      for (const entity of Array.isArray(partial.entities) ? partial.entities : []) {
-        const key = `${entity.type}:${entity.name}`;
+    if (cachedEntry?.cacheKey === cacheKey && isPlainObject(cachedEntry.partial)) {
+      partial = cachedEntry.partial;
+      usedCache = true;
+      cached++;
+      logLine(logPath, `Using cached truth ledger partial for ${relativePath}`);
+    } else {
+      result = await runTruthCollector(
+        [
+          "--vault-root",
+          vaultRoot,
+          "--file",
+          filePath,
+          "--output",
+          partialPath,
+          "--json",
+          job.infer === false ? "--no-infer" : "--infer"
+        ],
+        logPath,
+        paths,
+        job.id
+      );
 
-        if (!entities.has(key)) {
-          entities.set(key, entity);
-        }
+      if (result.canceled) {
+        throw new JobCanceledError();
       }
 
-      claims.push(...(Array.isArray(partial.claims) ? partial.claims : []));
-      inferredClaims.push(
-        ...(Array.isArray(partial.inferredClaims) ? partial.inferredClaims : [])
-      );
-      warnings.push(...(Array.isArray(partial.warnings) ? partial.warnings : []));
+      try {
+        partial = JSON.parse(result.stdout);
+      } catch {
+        // Leave partial as null; the failure record below captures the process output.
+      }
+    }
+
+    if ((usedCache || result?.ok) && partial) {
+      success++;
+      mergeTruthLedgerPartial(partial, entities, claims, inferredClaims, warnings);
+
+      if (!usedCache) {
+        cache.entries[relativePath] = {
+          cacheKey,
+          fingerprint,
+          inferenceSettings,
+          entityCatalogFingerprint,
+          partial,
+          updatedAt: new Date().toISOString()
+        };
+        writeJsonFileAtomic(cachePath, cache);
+      }
     } else {
       failed++;
       failures.push({
         filePath,
-        code: result.code,
+        code: result?.code,
         errors: Array.isArray(partial?.errors) ? partial.errors : undefined,
-        stderr: result.stderr.trim() || undefined,
-        stdout: partial ? undefined : result.stdout.trim() || undefined,
-        error: result.error?.message
+        stderr: result?.stderr?.trim() || undefined,
+        stdout: partial ? undefined : result?.stdout?.trim() || undefined,
+        error: result?.error?.message
       });
       logLine(logPath, `Failed ${relativePath}`);
     }
-
     job.progress = {
       total: files.length,
       completed: success + failed,
@@ -881,11 +1045,25 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     }
   }
 
+  for (const cachedPath of Object.keys(cache.entries)) {
+    if (!activeRelativePaths.has(cachedPath)) {
+      delete cache.entries[cachedPath];
+    }
+  }
+  writeJsonFileAtomic(cachePath, cache);
+
   const errors = findDuplicateClaimErrors(claims);
+  const generatedAt = new Date().toISOString();
+  const sourceFingerprints = files.map(filePath => ({
+    path: path.relative(vaultRoot, filePath),
+    fingerprint: fileFingerprints.get(filePath),
+    updatedAt: generatedAt
+  }));
   const index = {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     vaultRoot,
     outputPath,
+    sourceFingerprints,
     entityCount: entities.size,
     entities: [...entities.values()].sort((a, b) =>
       String(a.type ?? "").localeCompare(String(b.type ?? "")) ||
@@ -910,7 +1088,7 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   logLine(logPath);
   logLine(
     logPath,
-    `Truth ledger job complete. ${success} succeeded, ${failed} failed, ${errors.length} validation error(s).`
+    `Truth ledger job complete. ${success} succeeded (${cached} cached), ${failed} failed, ${errors.length} validation error(s).`
   );
 
   finishJob(jobPath, job, status, {
@@ -918,11 +1096,14 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
       total: files.length,
       completed: success + failed,
       success,
-      failed
+      failed,
+      cached
     },
     outputPath,
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
+    cachedNoteCount: cached,
+    cachePath,
     warnings: index.warnings,
     errors,
     failures,

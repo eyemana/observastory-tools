@@ -545,7 +545,7 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
+The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Per-note generated partials are cached by author-content fingerprint, model, inference settings, and entity-catalog fingerprint, so unchanged notes reuse prior inferred output instead of being reinterpreted. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
 
 Awareness evaluators use the generated support map as grounding. Reader Awareness receives support from prior story-order scenes as reader-visible context. Character Awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
 

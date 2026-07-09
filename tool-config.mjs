@@ -111,6 +111,7 @@ export const defaultConfig = {
     folders: ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
     paths: [],
     outputPath: ".index/truth-ledger.json",
+    cachePath: ".queue/truth-ledger-cache.json",
     inference: {
       enabled: true,
       maxClaimsPerNote: 5,
