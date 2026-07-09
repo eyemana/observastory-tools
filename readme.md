@@ -110,31 +110,20 @@ Crawler settings refer to those same folder keys:
 
 That keeps folder names in one place: change `story.folders.scenes`, and every tool using the `scenes` key follows it.
 
-Project calibration is controlled separately:
+Scene lifecycle calibration is controlled by each scene's `status` frontmatter. Missing status defaults to `draft`.
 
-```json
-"projectMode": "draft",
-"calibration": {
-  "modes": {
-    "outline": {
-      "guidance": "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
-      "scoreCeilings": {
-        "Resolution": 3.5,
-        "readerAwareness": {
-          "delta": 5,
-          "confidence": 5
-        },
-        "characterAwareness": {
-          "delta": 5,
-          "confidence": 5
-        }
-      }
-    }
-  }
-}
+```yaml
+status: draft
 ```
 
-Set `projectMode` to `outline` when you are sketching scenes and want conservative charts. Scalar score ceilings use the evaluator's 0-10 scale, so `Resolution: 3.5` appears as roughly 35% in reports that display percentages. Awareness ceilings can cap individual fields such as `delta` and `confidence`. Default `draft` mode does not cap scores.
+Lifecycle statuses:
+
+- `scratch`: excluded from normal evaluation and Truth Ledger processing.
+- `draft`: evaluated as intentional working material. Explicit Obsidian links are strong author intent signals, and polish-facing display scores can be capped by `calibration.modes.draft.scoreCeilings`.
+- `live`: evaluated as book-ready prose. Draft dampening is removed; scaffolding, TODOs, placeholders, and outline fragments should lower the appropriate craft scores.
+- `archived`: excluded from normal evaluation and Truth Ledger processing.
+
+Calibration caps use the evaluator's 0-10 scale. The raw evaluator value is preserved as `rawValue`; reports use the displayed capped value while showing the raw value when they differ.
 
 ## Quick Start
 
@@ -236,7 +225,7 @@ Scene identity comes from the filename without the `.md` extension.
 - `tags`: optional Obsidian tags. Evaluation profiles can use scene tags to decide which scenes to queue. The default profile skips scenes tagged `no-evaluate` or `exclude-evaluation`.
 - `chapter`: optional label/title metadata if you want it later; Storyboard does not require it for grouping.
 
-Story-element kind comes from folder location, and story-element identity comes from the filename without the `.md` extension. Story-element notes can use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `draft`, `archived`, or `inactive`, or excluded tags such as `no-evaluate`.
+Story-element kind comes from folder location, and story-element identity comes from the filename without the `.md` extension. Story-element notes can use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `scratch`, `archived`, or `inactive`, or excluded tags such as `no-evaluate`.
 
 Scene-level entity attention comes from Obsidian links. Link to notes such as `[[Mara Bell]]` or `[[Missing Ledger]]` in the scene body when you want the report and evaluator prompt context to treat that entity as intentionally present. You do not need root-level scene frontmatter fields like `characters`, `plotThreads`, or `arcs`.
 
@@ -280,13 +269,25 @@ Evaluation scope is controlled by note metadata and optional profiles, not by re
 - Scene-level include/exclude fields are rare hard overrides for a specific scene.
   Include/exclude conflicts are errors for names, statuses, and tags.
 
-The default profile includes element notes and scenes unless they opt out through an excluded status or an excluded tag. To skip a scene in the normal queue, tag it like this:
+Scene lifecycle is controlled by `status` frontmatter. Missing scene status defaults to `draft`.
+
+```yaml
+status: draft
+```
+
+Supported scene statuses:
+
+- `scratch`: private working material; excluded from evaluation, Truth Ledger, and normal story reports.
+- `draft`: working scene; evaluated with draft calibration. Links are treated as strong author intent, and polish-facing scores such as Pacing, Poetics, and Coherence may be capped so known deficiencies remain visible.
+- `live`: ready-for-book scene; evaluated without draft dampening. Scaffolding, TODOs, placeholders, outline fragments, and paraphrase should hurt the appropriate craft scores.
+- `archived`: old scene version; excluded from evaluation, Truth Ledger, and normal story reports.
+
+The default profile includes element notes and scenes unless they opt out through an excluded status or an excluded tag. To skip a scene in the normal queue without changing its lifecycle, tag it like this:
 
 ```yaml
 tags:
   - no-evaluate
 ```
-
 To run an experiment without editing many notes back and forth, use tags and profiles:
 
 ```json
@@ -449,7 +450,8 @@ ai:
           valueKind: delta
           values:
             delta: 3.5
-          projectMode: outline
+          lifecycleStatus: draft
+          calibrationMode: draft
         awareness:
           reader:
             valueKind: delta
@@ -556,8 +558,8 @@ Most report pages use Dataview or DataviewJS to read scene frontmatter and rende
 Core report categories:
 
 - `Observation Trajectory by Scene`: selector-driven line chart for entity type, dimension, observer, and delta/cumulative display. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
-- `Scene Metric Bullseye`: selected-scene radar and score bars across available metric families.
-- `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, and awareness-style signals.
+- `Scene Profile`: selected-scene radar and score bars across available metric families, with scene lifecycle controls and raw/calibrated value notes when calibration affects the displayed score.
+- `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, scaffolding, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
 - `Truth Ledger`: selector-driven support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.

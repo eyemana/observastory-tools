@@ -40,13 +40,15 @@ const awarenessRationaleSources = Array.isArray(awarenessConfig.rationaleSources
 const standardMetricsConfig = config.standardMetrics ?? {};
 const evaluationCacheConfig = config.evaluationCache ?? {};
 const evaluationCacheEnabled = evaluationCacheConfig.enabled !== false;
-const projectMode = typeof config.projectMode === "string"
+const configuredProjectMode = typeof config.projectMode === "string"
   ? config.projectMode
   : typeof config.project?.mode === "string"
     ? config.project.mode
     : "draft";
-const calibrationModeConfig = config.calibration?.modes?.[projectMode] ?? {};
-const EVALUATION_INPUT_HASH_VERSION = 1;
+let sceneLifecycleStatus = config.sceneLifecycle?.defaultStatus ?? configuredProjectMode ?? "draft";
+let calibrationMode = sceneLifecycleStatus;
+let calibrationModeConfig = config.calibration?.modes?.[calibrationMode] ?? {};
+const EVALUATION_INPUT_HASH_VERSION = 2;
 
 function readOption(args, name) {
   const index = args.indexOf(name);
@@ -87,6 +89,31 @@ const evaluationProfile = getEvaluationProfile(config, evaluationProfileName);
 if (!filePath || !metricName || !targetName) {
   console.error("Usage: node evaluate-scene.mjs <file> <metricName> <targetName> [--profile <name>] [--force]");
   process.exit(1);
+}
+
+function normalizeSceneLifecycleStatus(value) {
+  const status = String(value ?? config.sceneLifecycle?.defaultStatus ?? "draft")
+    .trim()
+    .toLowerCase();
+  const aliases = {
+    active: "live",
+    current: "live",
+    ignore: "scratch",
+    inactive: "archived"
+  };
+  const normalized = aliases[status] ?? status;
+  const allowed = new Set(["scratch", "draft", "live", "archived"]);
+
+  return allowed.has(normalized) ? normalized : "draft";
+}
+
+function sceneShouldBeSkipped(status) {
+  const configured = config.sceneLifecycle?.excludedStatuses;
+  const excluded = Array.isArray(configured) && configured.length > 0
+    ? new Set(configured.map((item) => String(item).trim().toLowerCase()))
+    : new Set(["scratch", "archived"]);
+
+  return excluded.has(status);
 }
 
 function buildTargetConfigs() {
@@ -616,7 +643,8 @@ function calibrationPromptGuidance(metricName) {
   }
 
   const lines = [
-    `Project mode: ${projectMode}.`
+    `Scene lifecycle status: ${sceneLifecycleStatus}.`,
+    `Calibration mode: ${calibrationMode}.`
   ];
 
   if (guidance) {
@@ -653,7 +681,8 @@ function applyCalibrationToMetricEntry(entry, metricName) {
     rawScene: entry.scene,
     scene: ceiling,
     calibration: {
-      mode: projectMode,
+      mode: calibrationMode,
+      lifecycleStatus: sceneLifecycleStatus,
       cappedAt: ceiling
     }
   };
@@ -697,7 +726,8 @@ function applyCalibrationToAwarenessEntry(entry, metricName) {
   return {
     ...calibrated,
     calibration: {
-      mode: projectMode,
+      mode: calibrationMode,
+      lifecycleStatus: sceneLifecycleStatus,
       fieldCeilings,
       raw
     }
@@ -791,6 +821,17 @@ const parsed = matter(raw);
 const pocRoot = findStoryRoot(filePath, storyConfig);
 const vaultRoot = path.resolve(toolRoot, "..");
 
+sceneLifecycleStatus = normalizeSceneLifecycleStatus(parsed.data.status);
+calibrationMode = sceneLifecycleStatus;
+calibrationModeConfig = config.calibration?.modes?.[calibrationMode] ??
+  config.calibration?.modes?.[configuredProjectMode] ??
+  {};
+
+if (sceneShouldBeSkipped(sceneLifecycleStatus)) {
+  console.log(`Skipped scene lifecycle status ${sceneLifecycleStatus}: ${path.basename(filePath)}`);
+  process.exit(0);
+}
+
 parsed.data.ai = parsed.data.ai ?? {};
 parsed.data.ai.model = config.model;
 
@@ -801,6 +842,8 @@ function evaluationInputHash(metricName, targetName, prompt) {
     metricName,
     targetName,
     profile: evaluationProfile.name,
+    lifecycleStatus: sceneLifecycleStatus,
+    calibrationMode,
     prompt
   };
 
@@ -860,6 +903,8 @@ function markEvaluationInput(metricKey, targetKey, inputHash) {
     inputHash,
     model: config.model,
     profile: evaluationProfile.name,
+    lifecycleStatus: sceneLifecycleStatus,
+    calibrationMode,
     metric: metricName,
     target: targetName,
     updated: new Date().toISOString()
@@ -892,7 +937,8 @@ function standardMetricObservationPayload(metricName, entry, settings, targetCon
       alignment: { min: -10, max: 10 },
       evidenceStrength: { min: 0, max: 10 }
     },
-    projectMode,
+    lifecycleStatus: sceneLifecycleStatus,
+    calibrationMode,
     profile: evaluationProfile.name,
     model: config.model,
     updated: new Date().toISOString()
@@ -957,7 +1003,8 @@ function awarenessObservationPayload(metricName, entry, targetConfig, entityName
       min: 0,
       max: 10
     },
-    projectMode,
+    lifecycleStatus: sceneLifecycleStatus,
+    calibrationMode,
     profile: evaluationProfile.name,
     model: config.model,
     updated: new Date().toISOString()

@@ -47,34 +47,32 @@ export const defaultConfig = {
       }
     }
   },
-  projectMode: "draft",
+  sceneLifecycle: {
+    defaultStatus: "draft",
+    excludedStatuses: ["scratch", "archived"]
+  },
   calibration: {
     modes: {
-      outline: {
+      draft: {
         guidance:
-          "The project is in outline mode. Treat notes, placeholders, and planned outcomes as low-confidence signals unless the scene text clearly dramatizes them.",
+          "Scene lifecycle status: draft. The author has intentionally marked this scene as working material. It may contain notes, placeholders, outline fragments, paraphrase, lists, and links that indicate intended entities or relationships. Treat explicit Obsidian links as strong author intent signals for relevant entity and relationship observations, but keep polish-facing displayed scores conservative where caps are configured.",
         scoreCeilings: {
-          Resolution: 3.5,
-          readerAwareness: {
-            delta: 5,
-            confidence: 5
-          },
-          characterAwareness: {
-            delta: 5,
-            confidence: 5
-          }
+          Pacing: 7,
+          Poetics: 6,
+          Coherence: 6
         }
       },
-      draft: {
-        guidance: "",
+      live: {
+        guidance:
+          "Scene lifecycle status: live. Treat this as prose intended to be part of the book. Do not apply protective draft dampening. Visible scaffolding, TODOs, placeholders, outline fragments, paraphrase, and loose notes should lower the appropriate craft scores and raise Scaffolding.",
         scoreCeilings: {}
       },
-      revision: {
-        guidance: "",
+      scratch: {
+        guidance: "Scene lifecycle status: scratch. Scratch scenes are excluded before evaluator prompts are built.",
         scoreCeilings: {}
       },
-      final: {
-        guidance: "",
+      archived: {
+        guidance: "Scene lifecycle status: archived. Archived scenes are excluded before evaluator prompts are built.",
         scoreCeilings: {}
       }
     }
@@ -129,13 +127,13 @@ export const defaultConfig = {
     defaultProfile: "default",
     elementFilters: {
       includeStatuses: [],
-      excludeStatuses: ["draft", "archived", "inactive"],
+      excludeStatuses: ["scratch", "archived", "inactive"],
       includeTags: [],
       excludeTags: ["no-evaluate", "exclude-evaluation"]
     },
     sceneFilters: {
       includeStatuses: [],
-      excludeStatuses: ["draft", "archived", "inactive"],
+      excludeStatuses: ["scratch", "archived", "inactive"],
       includeTags: [],
       excludeTags: ["no-evaluate", "exclude-evaluation"]
     },
@@ -185,6 +183,7 @@ export const defaultConfig = {
       ["Conflict", "Scene"],
       ["Poetics", "Scene"],
       ["Coherence", "Scene"],
+      ["Scaffolding", "Scene"],
       ["Character Awareness", "Plot Thread"],
       ["Reader Awareness", "Character"],
       ["Reader Awareness", "Plot Thread"],
