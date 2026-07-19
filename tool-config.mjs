@@ -22,25 +22,25 @@ export const defaultConfig = {
     },
     entityTypes: {
       characters: {
-        target: "Character",
+        target: "character",
         folderKeys: ["characters"],
         label: "character",
         pluralLabel: "characters"
       },
       plotThreads: {
-        target: "Plot Thread",
+        target: "plot thread",
         folderKeys: ["plotThreads"],
         label: "plot thread",
         pluralLabel: "plot threads"
       },
       storyEngines: {
-        target: "Story Engine",
+        target: "story engine",
         folderKeys: ["storyEngines"],
         label: "story engine",
         pluralLabel: "story engines"
       },
       arcs: {
-        target: "Arc",
+        target: "arc",
         folderKeys: ["arcs"],
         label: "arc",
         pluralLabel: "arcs"
@@ -57,9 +57,9 @@ export const defaultConfig = {
         guidance:
           "Scene lifecycle status: draft. The author has intentionally marked this scene as working material. It may contain notes, placeholders, outline fragments, paraphrase, lists, and links that indicate intended entities or relationships. Treat explicit Obsidian links as strong author intent signals for relevant entity and relationship observations, but keep polish-facing displayed scores conservative where caps are configured.",
         scoreCeilings: {
-          Pacing: 7,
-          Poetics: 6,
-          Coherence: 6
+          pacing: 7,
+          poetics: 6,
+          coherence: 6
         }
       },
       live: {
@@ -163,32 +163,32 @@ export const defaultConfig = {
     },
     storyboardReaderAwarenessAfterReorder: "ask",
     readerAwarenessEvaluations: [
-      ["Reader Awareness", "Character"],
-      ["Reader Awareness", "Plot Thread"],
-      ["Reader Awareness", "Arc"]
+      ["reader awareness", "character"],
+      ["reader awareness", "plot thread"],
+      ["reader awareness", "arc"]
     ],
     evaluations: [
-      ["Relevance", "Character"],
-      ["Relevance", "Plot Thread"],
-      ["Relevance", "Story Engine"],
-      ["Relevance", "Arc"],
-      ["Tension", "Character"],
-      ["Tension", "Plot Thread"],
-      ["Tension", "Story Engine"],
-      ["Tension", "Arc"],
-      ["Resolution", "Character"],
-      ["Resolution", "Plot Thread"],
-      ["Resolution", "Story Engine"],
-      ["Resolution", "Arc"],
-      ["Pacing", "Scene"],
-      ["Conflict", "Scene"],
-      ["Poetics", "Scene"],
-      ["Coherence", "Scene"],
-      ["Scaffolding", "Scene"],
-      ["Character Awareness", "Plot Thread"],
-      ["Reader Awareness", "Character"],
-      ["Reader Awareness", "Plot Thread"],
-      ["Reader Awareness", "Arc"]
+      ["relevance", "character"],
+      ["relevance", "plot thread"],
+      ["relevance", "story engine"],
+      ["relevance", "arc"],
+      ["tension", "character"],
+      ["tension", "plot thread"],
+      ["tension", "story engine"],
+      ["tension", "arc"],
+      ["resolution", "character"],
+      ["resolution", "plot thread"],
+      ["resolution", "story engine"],
+      ["resolution", "arc"],
+      ["pacing", "scene"],
+      ["conflict", "scene"],
+      ["poetics", "scene"],
+      ["coherence", "scene"],
+      ["scaffolding", "scene"],
+      ["character awareness", "plot thread"],
+      ["reader awareness", "character"],
+      ["reader awareness", "plot thread"],
+      ["reader awareness", "arc"]
     ]
   }
 };

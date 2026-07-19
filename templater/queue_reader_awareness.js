@@ -273,7 +273,7 @@ module.exports = async (tp) => {
     .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 
   const confirmed = await tp.system.suggester(
-    [`Queue Reader Awareness for ${files.length} scenes in ${folderPath}`, "Cancel"],
+    [`Queue reader awareness for ${files.length} scenes in ${folderPath}`, "Cancel"],
     ["yes", "no"]
   );
 
@@ -286,7 +286,7 @@ module.exports = async (tp) => {
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
 
   try {
-    new Notice("Queueing Reader Awareness evaluation...");
+    new Notice("Queueing reader awareness evaluation...");
 
     const rawOutput = execFileSync(
       nodePath,
@@ -331,12 +331,12 @@ module.exports = async (tp) => {
       );
 
       child.unref();
-      new Notice(`Queued Reader Awareness ${result.jobId}. Scheduler started.`);
+      new Notice(`Queued reader awareness ${result.jobId}. Scheduler started.`);
     } else {
-      new Notice(`Queued Reader Awareness ${result.jobId}. Background scheduler will pick it up.`);
+      new Notice(`Queued reader awareness ${result.jobId}. Background scheduler will pick it up.`);
     }
   } catch (error) {
-    new Notice("Failed to queue Reader Awareness evaluation. See developer console.");
+    new Notice("Failed to queue reader awareness evaluation. See developer console.");
     console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }

@@ -36,9 +36,9 @@ Your Vault/
   Example Book - A Ledger for Maribel Leigh/
     Scenes/
     Characters/
-    Plot Threads/
+    plot threads/
     Arcs/
-    Story Engines/
+    story engines/
     Reports/
 ```
 
@@ -59,8 +59,8 @@ For the tutorial, the story config looks like this:
   "folders": {
     "scenes": "Scenes",
     "characters": "Characters",
-    "plotThreads": "Plot Threads",
-    "storyEngines": "Story Engines",
+    "plotThreads": "plot threads",
+    "storyEngines": "story engines",
     "arcs": "Arcs",
     "metrics": "Metrics",
     "reports": "Reports",
@@ -68,25 +68,25 @@ For the tutorial, the story config looks like this:
   },
   "entityTypes": {
     "characters": {
-      "target": "Character",
+      "target": "character",
       "folderKeys": ["characters"],
       "label": "character",
       "pluralLabel": "characters"
     },
     "plotThreads": {
-      "target": "Plot Thread",
+      "target": "plot thread",
       "folderKeys": ["plotThreads"],
       "label": "plot thread",
       "pluralLabel": "plot threads"
     },
     "storyEngines": {
-      "target": "Story Engine",
+      "target": "story engine",
       "folderKeys": ["storyEngines"],
       "label": "story engine",
       "pluralLabel": "story engines"
     },
     "arcs": {
-      "target": "Arc",
+      "target": "arc",
       "folderKeys": ["arcs"],
       "label": "arc",
       "pluralLabel": "arcs"
@@ -131,7 +131,7 @@ From Obsidian, use these Templater templates:
 
 - `Templates/Queue-Evaluation-All-Scenes.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
 - `Templates/Queue-Evaluation-Current-Scene.md`: queue the full configured evaluation set for only the active scene.
-- `Templates/Queue-Evaluation-Reader-Awareness.md`: rerun only Reader Awareness after changing scene order.
+- `Templates/Queue-Evaluation-Reader-Awareness.md`: rerun only reader awareness after changing scene order.
 - `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
 - `Templates/Queue-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
 - `Templates/Queue-Stale-Work.md`: queue only work that Processing Status can identify as stale, missing, or legacy.
@@ -171,7 +171,7 @@ node scheduler/enqueue-chronology-index.mjs --vault-root "C:\path\to\your\vault"
 node scheduler/worker.mjs --drain
 ```
 
-To enqueue only Reader Awareness:
+To enqueue only reader awareness:
 
 ```sh
 node scheduler/enqueue-scene-evaluations.mjs --vault-root "C:\path\to\your\vault" --preset reader-awareness
@@ -198,7 +198,7 @@ node scheduler/enqueue-scene-evaluations.mjs "C:\path\to\your\vault\Example Book
 To process one scene directly:
 
 ```sh
-node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes\Inventory Day.md" "Tension" "Character"
+node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes\Inventory Day.md" "tension" "character"
 ```
 
 ## Scene Frontmatter
@@ -256,7 +256,7 @@ ai:
     precision: millisecond
 ```
 
-If a scene has no generated `ai.chronology.sort`, Character Awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
+If a scene has no generated `ai.chronology.sort`, character awareness does not infer prior chronology from file name, chapter order, scene order, or presentation order.
 Storyboard metadata editing prevents two scenes in the same `chapter_order` from sharing the same `scene_order`.
 
 ## Evaluation Scope
@@ -321,12 +321,12 @@ Storyboard has two view modes:
 
 The second selector controls the data lens:
 
-- `Reader plot`: Reader Awareness for plot threads.
-- `Reader character`: Reader Awareness for characters.
-- `Reader arc`: Reader Awareness for arcs.
-- `Story links`: linked characters, plot threads, and arcs without Reader Awareness bars.
+- `reader plot`: reader awareness for plot threads.
+- `reader character`: reader awareness for characters.
+- `reader arc`: reader awareness for arcs.
+- `story links`: linked characters, plot threads, and arcs without reader awareness bars.
 
-Character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
+character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
 
 Open `Example Book - A Ledger for Maribel Leigh/Reports/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This report is read-only and sorts by `ai.chronology.sort`.
 
@@ -340,7 +340,7 @@ Scene tiles show their order badge as:
 chapter_order.scene_order
 ```
 
-Hovering or focusing a scene shows a larger card with Reader Awareness deltas, cumulative totals, bounded awareness axes, and any configured rationale or evidence.
+Hovering or focusing a scene shows a larger card with reader awareness deltas, cumulative totals, bounded awareness axes, and any configured rationale or evidence.
 
 Click a scene to open the scene detail pane. Double-click a scene to open the note.
 
@@ -374,19 +374,19 @@ chapter_order: 2
 scene_order: 3
 ```
 
-If `storyboardReaderAwarenessAfterReorder` is set to `ask` or `auto`, Storyboard can queue Reader Awareness after saving order. Reader Awareness is still evaluated on individual scenes.
+If `storyboardReaderAwarenessAfterReorder` is set to `ask` or `auto`, Storyboard can queue reader awareness after saving order. reader awareness is still evaluated on individual scenes.
 
-## Reader Awareness
+## reader awareness
 
-Reader Awareness is a delta score, not an absolute score. It also stores bounded numeric axes that can apply across story and non-story contexts.
+reader awareness is a delta score, not an absolute score. It also stores bounded numeric axes that can apply across story and non-story contexts.
 
 For each scene, the evaluator asks: what does the reader newly learn in this scene, compared to prior scenes?
 
 It supports three targets:
 
-- `Reader Awareness / Character`: new reader knowledge about a character.
-- `Reader Awareness / Plot Thread`: new reader knowledge about a plot thread.
-- `Reader Awareness / Arc`: new visible evidence that an arc progressed, reversed, deepened, or resolved.
+- `reader awareness / character`: new reader knowledge about a character.
+- `reader awareness / plot thread`: new reader knowledge about a plot thread.
+- `reader awareness / arc`: new visible evidence that an arc progressed, reversed, deepened, or resolved.
 
 Scores are stored under scene frontmatter as observations:
 
@@ -409,11 +409,11 @@ ai:
 
 `delta` is the cumulative chart input. `salience` is how present the target is to the reader. `confidence` is how certain the reader is likely to feel about what they know or infer. `alignment` is how aligned the reader's likely understanding is with the supplied definitions, prior context, and scene evidence. `evidenceStrength` is how much support the supplied text gives for the scores.
 
-Storyboard calculates cumulative totals by summing deltas in story order. If you change order, rerun Reader Awareness so each scene's delta and bounded axes are calculated against the correct prior context.
+Storyboard calculates cumulative totals by summing deltas in story order. If you change order, rerun reader awareness so each scene's delta and bounded axes are calculated against the correct prior context.
 
-## Character Awareness
+## character awareness
 
-Character Awareness uses the same bounded numeric axes as Reader Awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by generated `ai.chronology.sort`, not by `chapter_order` and `scene_order`.
+character awareness uses the same bounded numeric axes as reader awareness, but it evaluates what each character plausibly learns in story chronology rather than what the reader learns in presentation order. The evaluator compares the current scene against prior scenes by generated `ai.chronology.sort`, not by `chapter_order` and `scene_order`.
 
 Scores are stored under scene frontmatter as observations:
 
@@ -547,7 +547,7 @@ Supported `truth` values:
 
 The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Per-note generated partials are cached by author-content fingerprint, model, inference settings, and entity-catalog fingerprint, so unchanged notes reuse prior inferred output instead of being reinterpreted. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
 
-Awareness evaluators use the generated support map as grounding. Reader Awareness receives support from prior story-order scenes as reader-visible context. Character Awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
+Awareness evaluators use the generated support map as grounding. reader awareness receives support from prior story-order scenes as reader-visible context. character awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
 
 ## Reports
 
@@ -628,8 +628,8 @@ Scene evaluation jobs are incremental by default. Each evaluator stores an input
 `storyboardReaderAwarenessAfterReorder` controls what Storyboard does after saving order:
 
 - `manual`: save `chapter_order` and `scene_order` only.
-- `ask`: ask whether to queue Reader Awareness.
-- `auto`: queue Reader Awareness immediately.
+- `ask`: ask whether to queue reader awareness.
+- `auto`: queue reader awareness immediately.
 
 Start the background worker from Obsidian with `Templates/Scheduler-Start.md`, or from a terminal:
 
@@ -692,7 +692,7 @@ The worker writes job logs to `observastory-tools/.queue/logs`.
 
 Cancel a queued or running job from Obsidian with `Templates/Queue-Cancel-Job.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 
-Run only Reader Awareness from Obsidian with `Templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes Reader Awareness; this template is for targeted reruns after order changes.
+Run only reader awareness from Obsidian with `Templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes reader awareness; this template is for targeted reruns after order changes.
 
 ## Processing Status and Stale Work
 

@@ -77,13 +77,39 @@ function removeFlag(args, name) {
   return args.filter((arg) => arg !== name);
 }
 
+function normalizeConceptName(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function conceptLookupKey(value) {
+  return normalizeConceptName(value).replace(/[\s_-]/g, "");
+}
+
+function configEntryForName(entries, name) {
+  const candidates = [
+    name,
+    toCamelCase(name),
+    normalizeConceptName(name)
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (entries?.[candidate]) {
+      return entries[candidate];
+    }
+  }
+
+  const normalized = conceptLookupKey(name);
+  return Object.entries(entries ?? {})
+    .find(([key]) => conceptLookupKey(key) === normalized)?.[1];
+}
+
 const args = process.argv.slice(2);
 const filePath = args[0];
-const metricName = args[1];
+const metricName = normalizeConceptName(args[1]);
 const evaluationProfileName = readOption(args, "--profile");
 const forceEvaluation = args.includes("--force");
 const targetArgs = removeFlag(removeOption(args.slice(2), "--profile"), "--force");
-const targetName = targetArgs.join(" ");
+const targetName = normalizeConceptName(targetArgs.join(" "));
 const evaluationProfile = getEvaluationProfile(config, evaluationProfileName);
 
 if (!filePath || !metricName || !targetName) {
@@ -120,21 +146,25 @@ function buildTargetConfigs() {
   const targets = {};
 
   for (const [key, entityType] of Object.entries(storyConfig.entityTypes ?? {})) {
-    if (!entityType.target) {
+    const target = normalizeConceptName(entityType.target ?? entityType.label ?? key);
+
+    if (!target) {
       continue;
     }
 
-    targets[entityType.target] = {
+    targets[target] = {
       key,
+      target,
       entityType: key,
       paths: storyEntityTypePaths(config, key),
-      label: entityType.label ?? key,
+      label: entityType.label ?? target,
       pluralLabel: entityType.pluralLabel ?? key
     };
   }
 
-  targets.Scene = {
+  targets.scene = {
     key: "scene",
+    target: "scene",
     entityType: "scene",
     paths: [],
     label: "scene",
@@ -148,14 +178,21 @@ function buildTargetConfigs() {
 const targetConfigs = buildTargetConfigs();
 
 function getTargetConfig(targetName) {
-  const normalized = targetName.trim();
+  const normalized = conceptLookupKey(targetName);
+  const match = Object.values(targetConfigs)
+    .find(targetConfig => [
+      targetConfig.target,
+      targetConfig.label,
+      targetConfig.pluralLabel,
+      targetConfig.key
+    ].some(value => conceptLookupKey(value) === normalized));
 
-  if (targetConfigs[normalized]) {
-    return targetConfigs[normalized];
+  if (match) {
+    return match;
   }
 
   throw new Error(
-    `Invalid target "${targetName}". Expected one of: ${Object.keys(targetConfigs).join(", ")}`
+    `Invalid target "${targetName}". Expected one of: ${Object.values(targetConfigs).map(targetConfig => targetConfig.target).join(", ")}`
   );
 }
 
@@ -169,10 +206,10 @@ function isReaderAwarenessMetric(metricName) {
 
 function standardMetricSettings(metricName) {
   const defaultSettings = standardMetricsConfig.default ?? {};
-  const metricSettings =
-    standardMetricsConfig.metrics?.[metricName] ??
-    standardMetricsConfig.metrics?.[toCamelCase(metricName)] ??
-    {};
+  const metricSettings = configEntryForName(
+    standardMetricsConfig.metrics,
+    metricName
+  ) ?? {};
   const rationaleMode = ["off", "extractive", "paraphrase"].includes(
     metricSettings.rationaleMode ?? defaultSettings.rationaleMode
   )
@@ -584,25 +621,8 @@ function normalizeSceneOnlyScore(bucket, label, rawResponse, settings, sourceTex
   return normalizeStandardMetricEntry(bucket, settings, sourceText);
 }
 
-function configuredCalibrationEntry(metricName) {
-  const ceilings = calibrationModeConfig.scoreCeilings ?? {};
-  const candidates = [
-    metricName,
-    toCamelCase(metricName),
-    metricName.toLowerCase()
-  ];
-
-  for (const key of candidates) {
-    if (Object.prototype.hasOwnProperty.call(ceilings, key)) {
-      return ceilings[key];
-    }
-  }
-
-  return null;
-}
-
 function configuredScoreCeiling(metricName) {
-  const entry = configuredCalibrationEntry(metricName);
+  const entry = configEntryForName(calibrationModeConfig?.scoreCeilings, metricName);
   const value = Number(entry);
 
   return Number.isFinite(value)
@@ -611,7 +631,7 @@ function configuredScoreCeiling(metricName) {
 }
 
 function configuredFieldCeilings(metricName) {
-  const entry = configuredCalibrationEntry(metricName);
+  const entry = configEntryForName(calibrationModeConfig?.fieldCeilings, metricName);
 
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return {};
@@ -894,7 +914,7 @@ function shouldSkipEvaluation(metricKey, targetKey, inputHash) {
     metadata?.inputHash === inputHash;
 }
 
-function markEvaluationInput(metricKey, targetKey, inputHash) {
+function markEvaluationInput(metricKey, targetKey, inputHash, storedMetricName = metricName, storedTargetName = targetName) {
   parsed.data.ai.evaluationInputs = parsed.data.ai.evaluationInputs ?? {};
   parsed.data.ai.evaluationInputs[metricKey] =
     parsed.data.ai.evaluationInputs[metricKey] ?? {};
@@ -905,8 +925,8 @@ function markEvaluationInput(metricKey, targetKey, inputHash) {
     profile: evaluationProfile.name,
     lifecycleStatus: sceneLifecycleStatus,
     calibrationMode,
-    metric: metricName,
-    target: targetName,
+    metric: normalizeConceptName(storedMetricName),
+    target: normalizeConceptName(storedTargetName),
     updated: new Date().toISOString()
   };
 }
@@ -1039,7 +1059,7 @@ function writeReaderAwarenessObservations(targetConfig, scores) {
       parsed.data.ai.observations[targetConfig.key][entityName].awareness ?? {};
     parsed.data.ai.observations[targetConfig.key][entityName].awareness.reader =
       awarenessObservationPayload(
-        "Reader Awareness",
+        "reader awareness",
         entry,
         targetConfig,
         entityName,
@@ -1064,7 +1084,7 @@ function writeCharacterAwarenessObservations(plotThreadConfig, scores) {
     for (const [characterName, entry] of Object.entries(characterScores ?? {})) {
       parsed.data.ai.observations[plotThreadConfig.key][plotThreadName].awareness.characters[characterName] =
         awarenessObservationPayload(
-          "Character Awareness",
+          "character awareness",
           entry,
           plotThreadConfig,
           plotThreadName,
@@ -1447,9 +1467,9 @@ function listPriorScenes(currentFilePath, currentScene) {
   const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getStoryOrder(currentScene);
   const currentName = path.basename(currentFilePath);
-  const characterNames = getTargetNames(getTargetConfig("Character"));
-  const plotThreadNames = getTargetNames(getTargetConfig("Plot Thread"));
-  const arcNames = getTargetNames(getTargetConfig("Arc"));
+  const characterNames = getTargetNames(getTargetConfig("character"));
+  const plotThreadNames = getTargetNames(getTargetConfig("plot thread"));
+  const arcNames = getTargetNames(getTargetConfig("arc"));
 
   return fs.readdirSync(scenesFolder, { withFileTypes: true })
     .filter(entry => entry.isFile())
@@ -1479,9 +1499,9 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
   const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getChronologyOrder(currentScene);
   const currentName = path.basename(currentFilePath);
-  const characterNames = getTargetNames(getTargetConfig("Character"));
-  const plotThreadNames = getTargetNames(getTargetConfig("Plot Thread"));
-  const arcNames = getTargetNames(getTargetConfig("Arc"));
+  const characterNames = getTargetNames(getTargetConfig("character"));
+  const plotThreadNames = getTargetNames(getTargetConfig("plot thread"));
+  const arcNames = getTargetNames(getTargetConfig("arc"));
 
   return fs.readdirSync(scenesFolder, { withFileTypes: true })
     .filter(entry => entry.isFile())
@@ -1650,6 +1670,7 @@ Required JSON:
 async function evaluateStandardMetric(metricName, targetName) {
   const metricKey = toCamelCase(metricName);
   const targetConfig = getTargetConfig(targetName);
+  const canonicalTargetName = targetConfig.target;
   const settings = standardMetricSettings(metricName);
 
   const targetDefinitionEntries = getTargetDefinitions(targetConfig);
@@ -1664,10 +1685,10 @@ async function evaluateStandardMetric(metricName, targetName) {
     targetDefinitions,
     settings
   );
-  const inputHash = evaluationInputHash(metricName, targetName, prompt);
+  const inputHash = evaluationInputHash(metricName, canonicalTargetName, prompt);
 
   if (shouldSkipEvaluation(metricKey, targetConfig.key, inputHash)) {
-    logSkippedEvaluation(metricName, targetName);
+    logSkippedEvaluation(metricName, canonicalTargetName);
     return false;
   }
 
@@ -1714,7 +1735,7 @@ async function evaluateStandardMetric(metricName, targetName) {
   normalizedScores = applyCalibrationToStandardScores(normalizedScores, metricName);
 
   writeStandardMetricObservations(metricName, targetConfig, normalizedScores, settings);
-  markEvaluationInput(metricKey, targetConfig.key, inputHash);
+  markEvaluationInput(metricKey, targetConfig.key, inputHash, metricName, canonicalTargetName);
   return true;
 }
 
@@ -1741,7 +1762,7 @@ Evaluate character awareness of plot threads for this scene.
 Characters:
 ${JSON.stringify(characterNames, null, 2)}
 
-Plot Threads:
+plot threads:
 ${JSON.stringify(plotThreadNames, null, 2)}
 
 Characters explicitly linked in this scene:
@@ -1757,7 +1778,7 @@ Do not use first names.
 Do not add unlisted characters or plot threads.
 Do not omit listed characters or plot threads.
 
-Character awareness means how much NEW information a character gains during this scene about a plot thread.
+character awareness means how much NEW information a character gains during this scene about a plot thread.
 
 Score delta from 0-10.
 Score salience from 0-10.
@@ -1785,7 +1806,7 @@ Do not score plot importance.
 Only score what each character plausibly learns during this scene.
 If a character is not present or cannot plausibly learn the information, use delta 0.
 
-${calibrationPromptGuidance("Character Awareness")}
+${calibrationPromptGuidance("character awareness")}
 
 ${awarenessRationaleInstructions()}
 
@@ -1820,14 +1841,17 @@ Required JSON:
 }
 
 async function evaluateCharacterAwareness(targetName) {
-  if (targetName !== "Plot Thread") {
+  const requestedTargetConfig = getTargetConfig(targetName);
+
+  if (requestedTargetConfig.key !== "plotThreads") {
     throw new Error(
-      `Character Awareness only supports target "Plot Thread". Received "${targetName}".`
+      `character awareness only supports target "plot thread". Received "${targetName}".`
     );
   }
 
-  const characterConfig = getTargetConfig("Character");
-  const plotThreadConfig = getTargetConfig("Plot Thread");
+  const characterConfig = getTargetConfig("character");
+  const plotThreadConfig = getTargetConfig("plot thread");
+  const canonicalTargetName = plotThreadConfig.target;
   const characterDefinitionEntries = getTargetDefinitions(characterConfig);
   const plotThreadDefinitionEntries = getTargetDefinitions(plotThreadConfig);
   const characterNames = characterDefinitionEntries.map((definition) => definition.name);
@@ -1851,13 +1875,13 @@ async function evaluateCharacterAwareness(targetName) {
     truthLedgerSupport
   );
   const inputHash = evaluationInputHash(
-    "Character Awareness",
-    targetName,
+    "character awareness",
+    canonicalTargetName,
     prompt
   );
 
   if (shouldSkipEvaluation("characterAwareness", "plotThreads", inputHash)) {
-    logSkippedEvaluation("Character Awareness", targetName);
+    logSkippedEvaluation("character awareness", canonicalTargetName);
     return false;
   }
 
@@ -1890,11 +1914,11 @@ async function evaluateCharacterAwareness(targetName) {
 
   plotThreads = applyCalibrationToCharacterAwarenessMap(
     plotThreads,
-    "Character Awareness"
+    "character awareness"
   );
 
   writeCharacterAwarenessObservations(plotThreadConfig, plotThreads);
-  markEvaluationInput("characterAwareness", "plotThreads", inputHash);
+  markEvaluationInput("characterAwareness", "plotThreads", inputHash, "character awareness", canonicalTargetName);
   return true;
 }
 
@@ -2015,7 +2039,7 @@ Do not score what characters know; this is reader-facing awareness only.
 Do not score scene relevance.
 ${guidance.cautions.join("\n")}
 
-${calibrationPromptGuidance("Reader Awareness")}
+${calibrationPromptGuidance("reader awareness")}
 
 ${awarenessRationaleInstructions()}
 
@@ -2045,7 +2069,7 @@ async function evaluateReaderAwareness(targetName) {
 
   if (!["characters", "plotThreads", "arcs"].includes(targetConfig.key)) {
     throw new Error(
-      `Reader Awareness only supports targets "Character", "Plot Thread", and "Arc". Received "${targetName}".`
+      `reader awareness only supports targets "character", "plot thread", and "arc". Received "${targetName}".`
     );
   }
 
@@ -2067,10 +2091,10 @@ async function evaluateReaderAwareness(targetName) {
     priorSceneContext,
     truthLedgerSupport
   );
-  const inputHash = evaluationInputHash("Reader Awareness", targetName, prompt);
+  const inputHash = evaluationInputHash("reader awareness", targetConfig.target, prompt);
 
   if (shouldSkipEvaluation("readerAwareness", targetConfig.key, inputHash)) {
-    logSkippedEvaluation("Reader Awareness", targetName);
+    logSkippedEvaluation("reader awareness", targetConfig.target);
     return false;
   }
 
@@ -2098,11 +2122,11 @@ async function evaluateReaderAwareness(targetName) {
 
   targetScores = applyCalibrationToReaderAwarenessMap(
     targetScores,
-    "Reader Awareness"
+    "reader awareness"
   );
 
   writeReaderAwarenessObservations(targetConfig, targetScores);
-  markEvaluationInput("readerAwareness", targetConfig.key, inputHash);
+  markEvaluationInput("readerAwareness", targetConfig.key, inputHash, "reader awareness", targetConfig.target);
   return true;
 }
 

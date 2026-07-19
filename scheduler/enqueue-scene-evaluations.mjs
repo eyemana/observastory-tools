@@ -77,7 +77,7 @@ function getPresetConfig(name) {
 
   if (name === "reader-awareness") {
     return {
-      label: "Reader Awareness",
+      label: "reader awareness",
       evaluations: scheduler.readerAwarenessEvaluations
     };
   }

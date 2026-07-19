@@ -109,12 +109,27 @@ export function projectFile(projectRoot, ...segments) {
   return path.join(projectRoot, ...segments);
 }
 
+function findMarkdownFileCaseInsensitive(directory, fileName) {
+  const exactPath = path.join(directory, fileName);
+
+  if (fs.existsSync(exactPath)) {
+    return exactPath;
+  }
+
+  if (!fs.existsSync(directory)) {
+    return exactPath;
+  }
+
+  const lowerFileName = fileName.toLowerCase();
+  const match = fs.readdirSync(directory, { withFileTypes: true })
+    .find(entry => entry.isFile() && entry.name.toLowerCase() === lowerFileName);
+
+  return match ? path.join(directory, match.name) : exactPath;
+}
+
 export function readDefinition(projectRoot, category, name) {
-  const filePath = projectFile(
-    projectRoot,
-    category,
-    `${name}.md`
-  );
+  const directory = projectFile(projectRoot, category);
+  const filePath = findMarkdownFileCaseInsensitive(directory, `${name}.md`);
 
   if (!fs.existsSync(filePath)) {
     throw new Error(`Definition not found: ${filePath}`);

@@ -137,14 +137,28 @@ function normalizeEvaluations(evaluations) {
     .map(([metric, target]) => [metric, target]);
 }
 
+function normalizeConceptName(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function conceptLookupKey(value) {
+  return normalizeConceptName(value).replace(/[\s_-]/g, "");
+}
+
 function targetKeyFor(config, targetName) {
-  if (targetName === "Scene") {
+  if (conceptLookupKey(targetName) === "scene") {
     return "scene";
   }
 
   const story = getStoryConfig(config);
+  const normalized = conceptLookupKey(targetName);
   const match = Object.entries(story.entityTypes ?? {})
-    .find(([, entityType]) => entityType?.target === targetName);
+    .find(([key, entityType]) => [
+      key,
+      entityType?.target,
+      entityType?.label,
+      entityType?.pluralLabel
+    ].some(value => conceptLookupKey(value) === normalized));
 
   return match?.[0] ?? toCamelCase(targetName);
 }
