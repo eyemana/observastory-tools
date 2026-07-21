@@ -15,13 +15,17 @@ import {
 } from "../tool-config.mjs";
 import {
   getEvaluationProfile,
-  listEligibleMarkdownFiles
+  listEligibleSceneFiles
 } from "../evaluation-filters.mjs";
 import {
   authorMarkdownFingerprint,
   chronologyInputHash
 } from "../fingerprints.mjs";
 import { toCamelCase } from "../vault-utils.mjs";
+import {
+  listSceneFiles,
+  sceneCompositionFingerprint
+} from "../scene-composition.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const statusRoot = path.dirname(__filename);
@@ -341,7 +345,7 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
   const evaluationProfileName = config.evaluation?.defaultProfile ?? "default";
   const profile = getEvaluationProfile(config, evaluationProfileName);
   const scenesFolder = path.resolve(vaultRoot, defaultScenesPath(config));
-  const sceneFiles = listEligibleMarkdownFiles(scenesFolder, profile.sceneFilters);
+  const sceneFiles = listEligibleSceneFiles(scenesFolder, profile.sceneFilters);
   const fingerprintFile = backgroundFingerprintPath(toolRoot, schedulerConfig);
   const fingerprintState = readJsonFile(fingerprintFile, null);
   const evaluations = normalizeEvaluations(schedulerConfig.evaluations);
@@ -363,7 +367,10 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
   const items = sceneFiles.map((filePath) => {
     const relativePath = path.relative(vaultRoot, filePath);
     const parsed = readMarkdown(filePath);
-    const fingerprint = authorMarkdownFingerprint(filePath);
+    const fingerprint = sceneCompositionFingerprint(filePath, {
+      scenesRoot: scenesFolder,
+      maxDepth: config.sceneComposition?.maxDepth
+    });
     const sceneStatus = sceneFingerprintStatus(filePath, fingerprint, fingerprintState);
     increment(fingerprintCounts, sceneStatus.status);
 
@@ -507,7 +514,7 @@ function buildTruthLedgerFreshness({ toolRoot, vaultRoot, config }) {
 function buildChronologyFreshness({ vaultRoot, config }) {
   const scanRoots = defaultChronologyPaths(config)
     .map(scanPath => resolveFromRoot(vaultRoot, scanPath));
-  const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
+  const files = [...new Set(scanRoots.flatMap(listSceneFiles))].sort();
   const counts = emptyCounts([
     "fresh",
     "stale",

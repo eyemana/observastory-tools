@@ -5,7 +5,7 @@ import { enqueueEvaluateScenesJob } from "./queue.mjs";
 import { defaultScenesPath, getSchedulerConfig, loadConfig } from "../tool-config.mjs";
 import {
   getEvaluationProfile,
-  listEligibleMarkdownFiles,
+  listEligibleSceneFiles,
   mergeFilterConfigs,
   normalizeFilterConfig
 } from "../evaluation-filters.mjs";
@@ -107,8 +107,20 @@ const scenesFolder = explicitScenesFolder
 const normalizedSceneFilters = normalizeFilterConfig(
   mergeFilterConfigs(profile.sceneFilters, sceneFilters)
 );
-const sceneCount = sceneFiles.length ||
-  listEligibleMarkdownFiles(scenesFolder, normalizedSceneFilters).length;
+const eligibleSceneFiles = listEligibleSceneFiles(scenesFolder, normalizedSceneFilters);
+const eligibleScenePaths = new Set(eligibleSceneFiles.map((filePath) => path.resolve(filePath)));
+const selectedSceneFiles = sceneFiles.length > 0
+  ? sceneFiles.map((filePath) => path.resolve(filePath))
+  : [];
+const invalidSceneFiles = selectedSceneFiles.filter((filePath) => !eligibleScenePaths.has(filePath));
+
+if (invalidSceneFiles.length > 0) {
+  throw new Error(
+    `Only eligible notes with frontmatter type: scene can be queued. Fragment or ineligible note(s): ${invalidSceneFiles.join(", ")}`
+  );
+}
+
+const sceneCount = selectedSceneFiles.length || eligibleSceneFiles.length;
 
 const result = dryRun
   ? {
@@ -119,7 +131,7 @@ const result = dryRun
   : enqueueEvaluateScenesJob({
       toolRoot,
       scenesFolder,
-      sceneFiles,
+      sceneFiles: selectedSceneFiles.length > 0 ? selectedSceneFiles : undefined,
       vaultRoot,
       source,
       evaluationProfile: profile.name,

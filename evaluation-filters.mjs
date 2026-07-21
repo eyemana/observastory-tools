@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
+import { listSceneFiles } from "./scene-composition.mjs";
+
 function normalizeValue(value) {
   return String(value ?? "")
     .trim()
@@ -218,6 +220,11 @@ export function listEligibleDefinitions(projectRoot, category, filters = {}) {
       filePath
     };
   });
+}
+
+export function listEligibleSceneFiles(scenesRoot, filters = {}) {
+  return listSceneFiles(scenesRoot)
+    .filter((filePath) => noteMatchesFilters(readMarkdownData(filePath).data, filters));
 }
 
 export function listEligibleDefinitionsFromPaths(projectRoot, folderPaths, filters = {}) {

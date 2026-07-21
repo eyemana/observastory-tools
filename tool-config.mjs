@@ -71,6 +71,9 @@ export const defaultConfig = {
     defaultStatus: "draft",
     excludedStatuses: ["scratch", "archived"]
   },
+  sceneComposition: {
+    maxDepth: 5
+  },
   calibration: {
     modes: {
       draft: {

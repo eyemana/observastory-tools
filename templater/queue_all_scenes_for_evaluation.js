@@ -153,6 +153,12 @@ module.exports = async (tp) => {
     return files;
   }
 
+  function isOfficialScene(filePath) {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const frontmatter = raw.match(/^---\s*\r?\n([\s\S]*?)\r?\n---/);
+    return Boolean(frontmatter && /^type:\s*["']?scene["']?\s*$/im.test(frontmatter[1]));
+  }
+
   function readJsonFile(filePath) {
     try {
       return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -270,6 +276,7 @@ module.exports = async (tp) => {
   const folderPath = path.relative(basePath, absoluteFolderPath);
 
   const files = walkMarkdownFiles(absoluteFolderPath)
+    .filter(isOfficialScene)
     .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
 
   const confirmed = await tp.system.suggester(

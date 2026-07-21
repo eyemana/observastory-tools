@@ -102,6 +102,19 @@ module.exports = async (tp) => {
     return config;
   }
 
+  function configuredScenesFolder(config, basePath) {
+    const story = config.story ?? {};
+    const configuredRoot = String(story.root ?? "").trim();
+    const scenes = story.folders?.scenes ?? "Scenes";
+    const storyRoot = path.isAbsolute(configuredRoot)
+      ? configuredRoot
+      : path.join(basePath, configuredRoot);
+
+    return path.isAbsolute(scenes)
+      ? scenes
+      : path.join(storyRoot, scenes);
+  }
+
   function readJsonFile(filePath) {
     try {
       return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -239,7 +252,7 @@ module.exports = async (tp) => {
   const config = loadConfig(toolsRoot);
   const scheduler = config.scheduler ?? {};
   const nodePath = scheduler.nodePath || "node";
-  const absoluteFolderPath = path.join(basePath, folderPath);
+  const absoluteFolderPath = configuredScenesFolder(config, basePath);
   const absoluteScenePath = path.join(basePath, activeFile.path);
   const enqueueScript = path.join(toolsRoot, "scheduler", "enqueue-scene-evaluations.mjs");
   const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");

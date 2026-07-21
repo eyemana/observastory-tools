@@ -16,10 +16,12 @@ import {
   storyEntityTypePaths
 } from "../tool-config.mjs";
 import { compareChronologySort } from "../chronology/chronology-utils.mjs";
+import { resolveSceneText } from "../scene-composition.mjs";
 import {
   applyNameFilters,
   getEvaluationProfile,
-  listEligibleDefinitionsFromPaths
+  listEligibleDefinitionsFromPaths,
+  listEligibleSceneFiles
 } from "../evaluation-filters.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -875,6 +877,10 @@ const raw = fs.readFileSync(filePath, "utf8");
 const parsed = matter(raw);
 const pocRoot = findStoryRoot(filePath, storyConfig);
 const vaultRoot = path.resolve(toolRoot, "..");
+const scenesRoot = path.isAbsolute(storyFolders.scenes)
+  ? storyFolders.scenes
+  : path.resolve(pocRoot, storyFolders.scenes);
+let sceneContent;
 
 sceneLifecycleStatus = normalizeSceneLifecycleStatus(parsed.data.status);
 calibrationMode = sceneLifecycleStatus;
@@ -1161,6 +1167,11 @@ function getTargetDefinitions(targetConfig) {
   return definitions.filter((definition) => filteredNames.has(definition.name));
 }
 
+sceneContent = resolveSceneText(filePath, {
+  scenesRoot,
+  maxDepth: config.sceneComposition?.maxDepth
+}).content;
+
 function valuesFromSceneFields(fieldNames) {
   return fieldNames.flatMap((fieldName) => {
     const value = parsed.data[fieldName];
@@ -1190,7 +1201,7 @@ function selectStandardMetricDefinitions(definitions, settings) {
   );
 
   if (selection.includeLinked === true) {
-    for (const linked of linkedTargetEntries(parsed.content, definitions.map((definition) => definition.name))) {
+    for (const linked of linkedTargetEntries(sceneContent, definitions.map((definition) => definition.name))) {
       selectedNames.add(linked.name);
     }
   }
@@ -1566,31 +1577,31 @@ function isPriorChronologyScene(scene, currentOrder, currentName) {
 }
 
 function listPriorScenes(currentFilePath, currentScene) {
-  const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getStoryOrder(currentScene);
   const currentName = path.basename(currentFilePath);
   const characterNames = getTargetNames(getTargetConfig("character"));
   const plotThreadNames = getTargetNames(getTargetConfig("plot thread"));
   const arcNames = getTargetNames(getTargetConfig("arc"));
 
-  return fs.readdirSync(scenesFolder, { withFileTypes: true })
-    .filter(entry => entry.isFile())
-    .filter(entry => entry.name.endsWith(".md"))
-    .filter(entry => entry.name !== currentName)
-    .map(entry => {
-      const scenePath = path.join(scenesFolder, entry.name);
+  return listEligibleSceneFiles(scenesRoot, evaluationProfile.sceneFilters)
+    .filter((scenePath) => path.resolve(scenePath) !== path.resolve(currentFilePath))
+    .map(scenePath => {
       const scene = matter(fs.readFileSync(scenePath, "utf8"));
+      const content = resolveSceneText(scenePath, {
+        scenesRoot,
+        maxDepth: config.sceneComposition?.maxDepth
+      }).content;
 
       return {
-        fileName: entry.name,
+        fileName: path.basename(scenePath),
         path: relativeVaultPath(scenePath),
-        name: path.basename(entry.name, ".md"),
+        name: path.basename(scenePath, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        characters: linkedTargetEntries(scene.content, characterNames).map((entry) => entry.name),
-        plotThreads: linkedTargetEntries(scene.content, plotThreadNames).map((entry) => entry.name),
-        arcs: linkedTargetEntries(scene.content, arcNames).map((entry) => entry.name),
-        content: scene.content.trim()
+        characters: linkedTargetEntries(content, characterNames).map((entry) => entry.name),
+        plotThreads: linkedTargetEntries(content, plotThreadNames).map((entry) => entry.name),
+        arcs: linkedTargetEntries(content, arcNames).map((entry) => entry.name),
+        content: content.trim()
       };
     })
     .filter(scene => isPriorStoryScene(scene, currentOrder, currentName))
@@ -1598,31 +1609,31 @@ function listPriorScenes(currentFilePath, currentScene) {
 }
 
 function listPriorChronologyScenes(currentFilePath, currentScene) {
-  const scenesFolder = path.dirname(currentFilePath);
   const currentOrder = getChronologyOrder(currentScene);
   const currentName = path.basename(currentFilePath);
   const characterNames = getTargetNames(getTargetConfig("character"));
   const plotThreadNames = getTargetNames(getTargetConfig("plot thread"));
   const arcNames = getTargetNames(getTargetConfig("arc"));
 
-  return fs.readdirSync(scenesFolder, { withFileTypes: true })
-    .filter(entry => entry.isFile())
-    .filter(entry => entry.name.endsWith(".md"))
-    .filter(entry => entry.name !== currentName)
-    .map(entry => {
-      const scenePath = path.join(scenesFolder, entry.name);
+  return listEligibleSceneFiles(scenesRoot, evaluationProfile.sceneFilters)
+    .filter((scenePath) => path.resolve(scenePath) !== path.resolve(currentFilePath))
+    .map(scenePath => {
       const scene = matter(fs.readFileSync(scenePath, "utf8"));
+      const content = resolveSceneText(scenePath, {
+        scenesRoot,
+        maxDepth: config.sceneComposition?.maxDepth
+      }).content;
 
       return {
-        fileName: entry.name,
+        fileName: path.basename(scenePath),
         path: relativeVaultPath(scenePath),
-        name: path.basename(entry.name, ".md"),
+        name: path.basename(scenePath, ".md"),
         storyOrder: getStoryOrder(scene),
         chronologyOrder: getChronologyOrder(scene),
-        characters: linkedTargetEntries(scene.content, characterNames).map((entry) => entry.name),
-        plotThreads: linkedTargetEntries(scene.content, plotThreadNames).map((entry) => entry.name),
-        arcs: linkedTargetEntries(scene.content, arcNames).map((entry) => entry.name),
-        content: scene.content.trim()
+        characters: linkedTargetEntries(content, characterNames).map((entry) => entry.name),
+        plotThreads: linkedTargetEntries(content, plotThreadNames).map((entry) => entry.name),
+        arcs: linkedTargetEntries(content, arcNames).map((entry) => entry.name),
+        content: content.trim()
       };
     })
     .filter(scene => isPriorChronologyScene(scene, currentOrder, currentName))
@@ -1685,7 +1696,7 @@ function buildStandardMetricPrompt(
   const calibrationGuidance = calibrationPromptGuidance(metricName);
   const linkedTargets = targetConfig.sceneOnly
     ? []
-    : linkedTargetEntries(parsed.content, targetNames);
+    : linkedTargetEntries(sceneContent, targetNames);
   const valueKind = standardMetricValueKind(settings, targetConfig);
   const sceneContext = standardMetricSceneContext(settings);
   const priorContext = standardMetricPriorContext(settings);
@@ -1717,7 +1728,7 @@ ${priorContext}
 
 Scene:
 
-${parsed.content}
+${sceneContent}
 
 Required JSON:
 {
@@ -1769,7 +1780,7 @@ ${priorContext}
 
 Scene:
 
-${parsed.content}
+${sceneContent}
 
 Required JSON:
 {
@@ -1829,7 +1840,7 @@ async function evaluateStandardMetric(metricName, targetName) {
     const { rawResponse, parsedResponse: scores } = await fetchJsonFromOllama(prompt);
 
     const sourceText = standardMetricSourceText(settings, {
-      scene: parsed.content,
+      scene: sceneContent,
       definitions: `${readDefinition(pocRoot, storyFolders.metrics, metricName)}\n\n${targetDefinitions}`,
       sceneContext: standardMetricSceneContext(settings),
       priorScenes: standardMetricPriorContext(settings)
@@ -1868,8 +1879,8 @@ function buildCharacterAwarenessPrompt(
   priorChronologyContext,
   truthLedgerSupport
 ) {
-  const linkedCharacters = linkedTargetEntries(parsed.content, characterNames);
-  const linkedPlotThreads = linkedTargetEntries(parsed.content, plotThreadNames);
+  const linkedCharacters = linkedTargetEntries(sceneContent, characterNames);
+  const linkedPlotThreads = linkedTargetEntries(sceneContent, plotThreadNames);
 
   return `
 Return JSON only.
@@ -1948,7 +1959,7 @@ Use author support as grounding for the story's intended truth, but do not assum
 
 Scene:
 
-${parsed.content}
+${sceneContent}
 
 Required JSON:
 {
@@ -2013,7 +2024,7 @@ async function evaluateCharacterAwareness(targetName) {
       {},
       plotThreadNames,
       characterNames,
-      awarenessSourceText({ scene: parsed.content })
+      awarenessSourceText({ scene: sceneContent })
     );
   } else {
     const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
@@ -2023,7 +2034,7 @@ async function evaluateCharacterAwareness(targetName) {
       plotThreadNames,
       characterNames,
       awarenessSourceText({
-        scene: parsed.content,
+        scene: sceneContent,
         definitions: [
           characterDefinitions,
           plotThreadDefinitions
@@ -2150,7 +2161,7 @@ function getReaderAwarenessGuidance(targetConfig) {
 
 function buildReaderAwarenessPrompt(targetConfig, targetNames, targetDefinitions, priorSceneContext, truthLedgerSupport) {
   const guidance = getReaderAwarenessGuidance(targetConfig);
-  const linkedTargets = linkedTargetEntries(parsed.content, targetNames);
+  const linkedTargets = linkedTargetEntries(sceneContent, targetNames);
 
   return `
 Return JSON only.
@@ -2217,7 +2228,7 @@ Use author support as grounding for the story's intended truth, but do not treat
 
 Current scene:
 
-${parsed.content}
+${sceneContent}
 
 Required JSON:
 ${awarenessJsonShape(targetConfig)}
@@ -2258,7 +2269,7 @@ async function evaluateReaderAwareness(targetName) {
     targetScores = normalizeReaderAwarenessMap(
       {},
       targetNames,
-      awarenessSourceText({ scene: parsed.content })
+      awarenessSourceText({ scene: sceneContent })
     );
   } else {
     const { parsedResponse: scores } = await fetchJsonFromOllama(prompt);
@@ -2267,7 +2278,7 @@ async function evaluateReaderAwareness(targetName) {
       scores[targetConfig.key],
       targetNames,
       awarenessSourceText({
-        scene: parsed.content,
+        scene: sceneContent,
         definitions: targetDefinitions,
         priorScenes: `${priorSceneContext}\n\n${truthLedgerSupport}`
       })

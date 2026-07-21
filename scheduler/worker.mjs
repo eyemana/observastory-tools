@@ -18,10 +18,14 @@ import {
 import {
   getEvaluationProfile,
   listEligibleDefinitionsFromPaths,
-  listEligibleMarkdownFiles,
+  listEligibleSceneFiles,
   mergeFilterConfigs
 } from "../evaluation-filters.mjs";
 import { authorMarkdownFingerprint } from "../fingerprints.mjs";
+import {
+  listSceneFiles,
+  sceneCompositionFingerprint
+} from "../scene-composition.mjs";
 import {
   claimJob,
   clearWorkerStop,
@@ -150,19 +154,11 @@ function backgroundFingerprintPath(schedulerConfig) {
   return configuredPathFromToolRoot(configured);
 }
 
-function authorSceneFingerprint(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  const parsed = matter(raw);
-  const frontmatter = { ...(parsed.data ?? {}) };
-  delete frontmatter.ai;
-
-  return crypto
-    .createHash("sha256")
-    .update(JSON.stringify({
-      frontmatter,
-      content: parsed.content
-    }))
-    .digest("hex");
+function authorSceneFingerprint(filePath, scenesRoot, config) {
+  return sceneCompositionFingerprint(filePath, {
+    scenesRoot,
+    maxDepth: config.sceneComposition?.maxDepth
+  });
 }
 
 function sceneAlreadyQueued(paths, filePath) {
@@ -212,7 +208,7 @@ function scanBackgroundSceneChanges(schedulerConfig, paths) {
     files: {},
     pending: {}
   });
-  const files = listEligibleMarkdownFiles(scenesFolder, profile.sceneFilters);
+  const files = listEligibleSceneFiles(scenesFolder, profile.sceneFilters);
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
   const debounceMs = Math.max(1000, Number(scanConfig.debounceMs) || 5000);
@@ -222,7 +218,7 @@ function scanBackgroundSceneChanges(schedulerConfig, paths) {
   if (Object.keys(knownFiles).length === 0 && scanConfig.baselineOnFirstRun !== false) {
     for (const filePath of files) {
       knownFiles[path.resolve(filePath)] = {
-        fingerprint: authorSceneFingerprint(filePath),
+        fingerprint: authorSceneFingerprint(filePath, scenesFolder, config),
         updatedAt: nowIso
       };
     }
@@ -239,7 +235,7 @@ function scanBackgroundSceneChanges(schedulerConfig, paths) {
 
   for (const filePath of files) {
     const resolved = path.resolve(filePath);
-    const fingerprint = authorSceneFingerprint(filePath);
+    const fingerprint = authorSceneFingerprint(filePath, scenesFolder, config);
     const known = knownFiles[resolved]?.fingerprint;
 
     if (known === fingerprint) {
@@ -561,18 +557,30 @@ async function runChronologyIndexer(args, logPath, paths, jobId) {
 }
 
 function getJobSceneFiles(job, fullConfig) {
+  const profile = getEvaluationProfile(fullConfig, job.evaluationProfile);
+  const sceneFilters = mergeFilterConfigs(profile.sceneFilters, job.sceneFilters);
+  const eligibleFiles = listEligibleSceneFiles(job.scenesFolder, sceneFilters);
+
   if (Array.isArray(job.sceneFiles) && job.sceneFiles.length > 0) {
-    return job.sceneFiles
+    const eligible = new Set(eligibleFiles.map((filePath) => path.resolve(filePath)));
+    const requested = job.sceneFiles
       .filter((filePath) => typeof filePath === "string")
       .map((filePath) => path.resolve(filePath))
       .filter((filePath) => filePath.endsWith(".md"))
       .sort((a, b) => path.basename(a).localeCompare(path.basename(b)));
+
+    const fragments = requested.filter((filePath) => !eligible.has(filePath));
+
+    if (fragments.length > 0) {
+      throw new Error(
+        `Only notes with frontmatter type: scene can be evaluated. Fragment or ineligible note(s): ${fragments.join(", ")}`
+      );
+    }
+
+    return requested;
   }
 
-  const profile = getEvaluationProfile(fullConfig, job.evaluationProfile);
-  const sceneFilters = mergeFilterConfigs(profile.sceneFilters, job.sceneFilters);
-
-  return listEligibleMarkdownFiles(job.scenesFolder, sceneFilters);
+  return eligibleFiles;
 }
 
 function resolvePath(root, candidate) {
@@ -1122,7 +1130,7 @@ async function processChronologyIndexJob(jobPath, job, schedulerConfig, paths) {
     ? job.paths
     : defaultChronologyPaths(fullConfig);
   const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
-  const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
+  const files = [...new Set(scanRoots.flatMap(listSceneFiles))].sort();
   let indexed = 0;
   let skipped = 0;
   let failed = 0;

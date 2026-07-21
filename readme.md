@@ -136,6 +136,14 @@ Extractive rationale sources may be selected from `scene`, `definitions`, `scene
 
 Entity types may provide a `readerAwareness` object containing `subject`, rubric text, and cautions. This allows Reader Awareness to evaluate a new configured story-thing type without adding a target-specific evaluator branch.
 
+### Scene and fragment composition
+
+The configured Scenes folder is recursive. A Markdown note within it is an independently evaluated scene only when it has `type: scene` in frontmatter. Notes without that marker are fragments and do not appear as scenes in queue, chronology, freshness, or tutorial report discovery.
+
+Within scene prose, ordinary `[[links]]` remain unexpanded attention signals. A `![[fragment]]` embed is expanded transiently before current-scene evaluation, prior-scene context construction, link scanning, and freshness fingerprinting. Fragment frontmatter is discarded. A fragment may recursively embed another fragment, subject to `sceneComposition.maxDepth`; cycles, self-embeds, ambiguous or missing notes, and embeds of another official scene fail clearly.
+
+Metadata `[[links]]` remain references. Metadata `![[embeds]]` are deliberately not expanded in this MVP because Obsidian properties do not natively render Markdown embeds.
+
 Scene lifecycle calibration is controlled by each scene's `status` frontmatter. Missing status defaults to `draft`.
 
 ```yaml
@@ -643,7 +651,7 @@ The scheduler has one worker and multiple job types:
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
 
-When `scheduler.backgroundSceneScan.enabled` is true, the background worker also scans eligible scene notes and queues a small scene-evaluation job only for scene files whose author-owned input changed. This scan fingerprints scene content plus author frontmatter and ignores the generated `ai` branch, so evaluator writes do not trigger another evaluation loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-Evaluation-All-Scenes.md` when you intentionally want a full pass.
+When `scheduler.backgroundSceneScan.enabled` is true, the background worker scans eligible `type: scene` notes and queues a small evaluation job only for scenes whose effective author-owned input changed. The fingerprint includes root-scene frontmatter and recursively expanded fragment prose while ignoring the generated `ai` branch. A fragment edit therefore makes each embedding scene stale, while evaluator writes do not trigger another loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-Evaluation-All-Scenes.md` when you intentionally want a full pass.
 
 `backgroundSceneScan.debounceMs` controls how long a changed scene must stay stable before the worker queues it. This is the guardrail for active Obsidian editing: repeated saves to the current scene update the pending fingerprint rather than spawning a burst of duplicate jobs.
 

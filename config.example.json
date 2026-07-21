@@ -97,6 +97,13 @@
     "excludedStatuses": ["scratch", "archived"]
   },
 
+  // Notes under the configured Scenes folder are official scenes only when
+  // frontmatter contains type: scene. Other Markdown notes are fragments.
+  "sceneComposition": {
+    // Maximum number of nested ![[fragment]] expansions below a scene.
+    "maxDepth": 5
+  },
+
   "calibration": {
     "modes": {
       "draft": {
