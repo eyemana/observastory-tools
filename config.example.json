@@ -21,7 +21,8 @@
 
   "story": {
     // Root folder for the book/story inside the Obsidian vault.
-    // Move this when you start a different tutorial or project.
+    // Use "." when Scenes, Characters, Reports, and the other story folders
+    // live directly at the vault root.
     "root": "Example Book - A Ledger for Maribel Leigh",
 
     // Folder names are relative to story.root unless an absolute path is supplied.
@@ -32,6 +33,7 @@
       "plotThreads": "plot threads",
       "storyEngines": "story engines",
       "arcs": "Arcs",
+      "narrators": "Narrators",
       "metrics": "Metrics",
       "reports": "Reports",
       "notes": "Notes"
@@ -64,6 +66,25 @@
         "folderKeys": ["arcs"],
         "label": "arc",
         "pluralLabel": "arcs"
+      },
+      "narrators": {
+        "target": "narrator",
+        "folderKeys": ["narrators"],
+        "label": "narrator",
+        "pluralLabel": "narrators",
+        "readerAwareness": {
+          "subject": "narrator identities",
+          "meaning": "Reader awareness means how much NEW information this scene gives the reader about a narrator's identity, role, access, motives, relationship to the narrated subject, or reliability.",
+          "low": "1-3 = the reader receives a minor voice cue, suspicion, confirmation, or identity clue.",
+          "medium": "4-6 = the reader gains meaningful information about who the narrator may be, what they want, or how they know what they narrate.",
+          "high": "7-9 = the reader gains major new understanding of the narrator's identity, role, access, motives, or reliability.",
+          "decisive": "10 = the narrator's identity or narrative role is decisively revealed, reversed, or resolved.",
+          "cautions": [
+            "Score what becomes available to the reader, not the narrator's general importance or mere amount of narration.",
+            "A recognizable voice can reinforce salience without revealing identity; keep identity delta low unless the scene adds a meaningful clue or connection.",
+            "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."
+          ]
+        }
       }
     }
   },
@@ -110,7 +131,7 @@
       "rationaleMode": "paraphrase",
 
       // Source buckets allowed for extractive evidence validation.
-      // Available values: "scene", "definitions".
+      // Available values: "scene", "definitions", "sceneContext", "priorScenes".
       "rationaleSources": ["scene", "definitions"],
 
       // Frontmatter field used for paraphrased rationale on standard metric score objects.
@@ -128,14 +149,39 @@
       "Conflict": { "rationaleType": "conflict rationale" },
       "Poetics": { "rationaleType": "poetics rationale" },
       "Coherence": { "rationaleType": "coherence rationale" },
-      "Scaffolding": { "rationaleType": "scaffolding rationale" }
+      "Scaffolding": { "rationaleType": "scaffolding rationale" },
+      "Voice Consistency": {
+        "rationaleType": "voice consistency rationale",
+        "valueKind": "score",
+        "contextFields": ["pov", "narrator"],
+        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "all" }
+      },
+      "POV Legibility": {
+        "rationaleType": "POV legibility rationale",
+        "valueKind": "score",
+        "contextFields": ["pov", "narrator"]
+      },
+      "Thread Cueing": {
+        "rationaleType": "thread cueing rationale",
+        "valueKind": "score",
+        "contextFields": ["pov", "narrator"],
+        "priorContext": "readerOrder",
+        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "all" }
+      },
+      "Knowledge Integrity": {
+        "rationaleType": "knowledge integrity rationale",
+        "valueKind": "score",
+        "contextFields": ["pov"],
+        "priorContext": "chronology",
+        "targetSelection": { "mode": "sceneFields", "fields": ["characters", "pov"], "includeLinked": true, "fallback": "all" }
+      }
     }
   },
 
   "truthLedger": {
     // Folder keys to scan for authored anchors and inferred support.
     // These names come from story.folders above, keeping the tutorial paths in one place.
-    "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
+    "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "narrators", "scenes"],
 
     // Generated JSON index used by reports and awareness evaluator grounding.
     // Relative paths are resolved from the observastory-tools folder.
@@ -174,8 +220,8 @@
 
   "evaluation": {
     // Named profiles let you switch evaluation scope without editing many notes.
-    // Element filters control which character, plot thread, story engine, and arc
-    // notes are eligible for scoring. Scene filters control which scenes are queued.
+    // Element filters control which configured entity notes are eligible for scoring.
+    // Scene filters control which scenes are queued.
     "defaultProfile": "default",
 
     // These defaults include notes unless status or tags exclude them. Missing scene status is treated as draft.
@@ -281,17 +327,18 @@
     "readerAwarenessEvaluations": [
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
-      ["reader awareness", "arc"]
+      ["reader awareness", "arc"],
+      ["reader awareness", "narrator"]
     ],
 
     // Evaluations to run for each scene, in order.
     // Format: [metric, target].
-    // Metric options: "relevance", "tension", "resolution", "pacing", "conflict", "poetics",
-    // "coherence", "scaffolding", "character awareness", "reader awareness".
-    // Target options: "character", "plot thread", "story engine", "arc", "scene".
+    // Metric names come from notes in the configured Metrics folder. Character Awareness and
+    // Reader Awareness use specialized relationship evaluators; other names use the generic evaluator.
+    // Target names come from story.entityTypes plus the built-in "scene" target.
     // "pacing", "conflict", "poetics", "coherence", and "scaffolding" use target "scene" and do not load external context.
     // "character awareness" currently only supports target "plot thread".
-    // "reader awareness" currently supports targets "character", "plot thread", and "arc".
+    // "reader awareness" supports configured entity types and can use per-type readerAwareness guidance.
     "evaluations": [
       ["relevance", "character"],
       ["relevance", "plot thread"],
@@ -310,10 +357,15 @@
       ["poetics", "scene"],
       ["coherence", "scene"],
       ["scaffolding", "scene"],
+      ["voice consistency", "narrator"],
+      ["pov legibility", "scene"],
+      ["thread cueing", "narrator"],
+      ["knowledge integrity", "character"],
       ["character awareness", "plot thread"],
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
-      ["reader awareness", "arc"]
+      ["reader awareness", "arc"],
+      ["reader awareness", "narrator"]
     ]
   }
 }

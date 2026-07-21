@@ -16,6 +16,7 @@ export const defaultConfig = {
       plotThreads: "Plot Threads",
       storyEngines: "Story Engines",
       arcs: "Arcs",
+      narrators: "Narrators",
       metrics: "Metrics",
       reports: "Reports",
       notes: "Notes"
@@ -44,6 +45,25 @@ export const defaultConfig = {
         folderKeys: ["arcs"],
         label: "arc",
         pluralLabel: "arcs"
+      },
+      narrators: {
+        target: "narrator",
+        folderKeys: ["narrators"],
+        label: "narrator",
+        pluralLabel: "narrators",
+        readerAwareness: {
+          subject: "narrator identities",
+          meaning: "Reader awareness means how much NEW information this scene gives the reader about a narrator's identity, role, access, motives, relationship to the narrated subject, or reliability.",
+          low: "1-3 = the reader receives a minor voice cue, suspicion, confirmation, or identity clue.",
+          medium: "4-6 = the reader gains meaningful information about who the narrator may be, what they want, or how they know what they narrate.",
+          high: "7-9 = the reader gains major new understanding of the narrator's identity, role, access, motives, or reliability.",
+          decisive: "10 = the narrator's identity or narrative role is decisively revealed, reversed, or resolved.",
+          cautions: [
+            "Score what becomes available to the reader, not the narrator's general importance or mere amount of narration.",
+            "A recognizable voice can reinforce salience without revealing identity; keep identity delta low unless the scene adds a meaningful clue or connection.",
+            "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."
+          ]
+        }
       }
     }
   },
@@ -104,11 +124,49 @@ export const defaultConfig = {
       },
       Coherence: {
         rationaleType: "coherence rationale"
+      },
+      "Voice Consistency": {
+        rationaleType: "voice consistency rationale",
+        valueKind: "score",
+        contextFields: ["pov", "narrator"],
+        targetSelection: {
+          mode: "sceneFields",
+          fields: ["narrator", "pov"],
+          fallback: "all"
+        }
+      },
+      "POV Legibility": {
+        rationaleType: "POV legibility rationale",
+        valueKind: "score",
+        contextFields: ["pov", "narrator"]
+      },
+      "Thread Cueing": {
+        rationaleType: "thread cueing rationale",
+        valueKind: "score",
+        contextFields: ["pov", "narrator"],
+        priorContext: "readerOrder",
+        targetSelection: {
+          mode: "sceneFields",
+          fields: ["narrator", "pov"],
+          fallback: "all"
+        }
+      },
+      "Knowledge Integrity": {
+        rationaleType: "knowledge integrity rationale",
+        valueKind: "score",
+        contextFields: ["pov"],
+        priorContext: "chronology",
+        targetSelection: {
+          mode: "sceneFields",
+          fields: ["characters", "pov"],
+          includeLinked: true,
+          fallback: "all"
+        }
       }
     }
   },
   truthLedger: {
-    folders: ["notes", "arcs", "storyEngines", "plotThreads", "characters", "scenes"],
+    folders: ["notes", "arcs", "storyEngines", "plotThreads", "characters", "narrators", "scenes"],
     paths: [],
     outputPath: ".index/truth-ledger.json",
     cachePath: ".queue/truth-ledger-cache.json",
@@ -165,7 +223,8 @@ export const defaultConfig = {
     readerAwarenessEvaluations: [
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
-      ["reader awareness", "arc"]
+      ["reader awareness", "arc"],
+      ["reader awareness", "narrator"]
     ],
     evaluations: [
       ["relevance", "character"],
@@ -185,10 +244,15 @@ export const defaultConfig = {
       ["poetics", "scene"],
       ["coherence", "scene"],
       ["scaffolding", "scene"],
+      ["voice consistency", "narrator"],
+      ["pov legibility", "scene"],
+      ["thread cueing", "narrator"],
+      ["knowledge integrity", "character"],
       ["character awareness", "plot thread"],
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
-      ["reader awareness", "arc"]
+      ["reader awareness", "arc"],
+      ["reader awareness", "narrator"]
     ]
   }
 };

@@ -158,7 +158,8 @@ function buildTargetConfigs() {
       entityType: key,
       paths: storyEntityTypePaths(config, key),
       label: entityType.label ?? target,
-      pluralLabel: entityType.pluralLabel ?? key
+      pluralLabel: entityType.pluralLabel ?? key,
+      readerAwareness: entityType.readerAwareness
     };
   }
 
@@ -228,13 +229,34 @@ function standardMetricSettings(metricName) {
     typeof metricSettings.rationaleType === "string"
       ? metricSettings.rationaleType
       : `${metricName.toLowerCase()} rationale`;
+  const valueKind = ["score", "delta"].includes(metricSettings.valueKind)
+    ? metricSettings.valueKind
+    : null;
+  const contextFields = Array.isArray(metricSettings.contextFields)
+    ? metricSettings.contextFields.filter((field) => typeof field === "string" && field.trim())
+    : [];
+  const targetSelection =
+    metricSettings.targetSelection && typeof metricSettings.targetSelection === "object"
+      ? metricSettings.targetSelection
+      : null;
+  const priorContext = ["readerOrder", "chronology"].includes(metricSettings.priorContext)
+    ? metricSettings.priorContext
+    : null;
 
   return {
     rationaleMode,
     rationaleSources: new Set(rationaleSources),
     rationaleField,
-    rationaleType
+    rationaleType,
+    valueKind,
+    contextFields,
+    targetSelection,
+    priorContext
   };
+}
+
+function standardMetricValueKind(settings, targetConfig) {
+  return settings.valueKind ?? (targetConfig.sceneOnly ? "score" : "delta");
 }
 
 function clampNumber(value, min, max, fallback = 0) {
@@ -344,6 +366,19 @@ function standardMetricSourceText(settings, parts) {
     .join("\n\n");
 }
 
+function standardMetricSourceListText(settings) {
+  const sourceLabels = {
+    scene: "current scene",
+    definitions: "supplied definitions",
+    sceneContext: "configured scene context",
+    priorScenes: "prior scene context"
+  };
+
+  return [...settings.rationaleSources]
+    .map((source) => sourceLabels[source] ?? source)
+    .join(", ");
+}
+
 function standardMetricRationaleInstructions(settings) {
   if (settings.rationaleMode === "off") {
     return "Do not return rationale, evidence, excerpts, or explanatory prose.";
@@ -352,7 +387,7 @@ function standardMetricRationaleInstructions(settings) {
   if (settings.rationaleMode === "extractive") {
     return `
 Do not return paraphrased rationale or explanatory prose.
-Return evidence as 0-3 exact excerpts copied from the supplied scene or definitions.
+Return evidence as 0-3 exact excerpts copied from these allowed sources: ${standardMetricSourceListText(settings)}.
 Each evidence excerpt must use the author's own words exactly.`;
   }
 
@@ -932,7 +967,7 @@ function markEvaluationInput(metricKey, targetKey, inputHash, storedMetricName =
 }
 
 function standardMetricObservationPayload(metricName, entry, settings, targetConfig, entityName) {
-  const valueKind = targetConfig.sceneOnly ? "score" : "delta";
+  const valueKind = standardMetricValueKind(settings, targetConfig);
   const payload = {
     entity: {
       name: entityName,
@@ -1124,6 +1159,73 @@ function getTargetDefinitions(targetConfig) {
   );
 
   return definitions.filter((definition) => filteredNames.has(definition.name));
+}
+
+function valuesFromSceneFields(fieldNames) {
+  return fieldNames.flatMap((fieldName) => {
+    const value = parsed.data[fieldName];
+
+    if (Array.isArray(value)) {
+      return value;
+    }
+
+    return value === null || value === undefined || value === "" ? [] : [value];
+  });
+}
+
+function selectStandardMetricDefinitions(definitions, settings) {
+  const selection = settings.targetSelection;
+
+  if (!selection || selection.mode !== "sceneFields") {
+    return definitions;
+  }
+
+  const canonicalNames = new Map(
+    definitions.map((definition) => [definition.name.toLowerCase(), definition.name])
+  );
+  const selectedNames = new Set(
+    valuesFromSceneFields(Array.isArray(selection.fields) ? selection.fields : [])
+      .map((value) => canonicalNames.get(normalizeLinkTargetName(value).toLowerCase()))
+      .filter(Boolean)
+  );
+
+  if (selection.includeLinked === true) {
+    for (const linked of linkedTargetEntries(parsed.content, definitions.map((definition) => definition.name))) {
+      selectedNames.add(linked.name);
+    }
+  }
+
+  if (selectedNames.size === 0 && selection.fallback === "all") {
+    return definitions;
+  }
+
+  return definitions.filter((definition) => selectedNames.has(definition.name));
+}
+
+function standardMetricSceneContext(settings) {
+  const context = {};
+
+  for (const fieldName of settings.contextFields) {
+    if (parsed.data[fieldName] !== undefined) {
+      context[fieldName] = parsed.data[fieldName];
+    }
+  }
+
+  return Object.keys(context).length > 0
+    ? `Configured scene context:\n${JSON.stringify(context, null, 2)}`
+    : "";
+}
+
+function standardMetricPriorContext(settings) {
+  if (settings.priorContext === "readerOrder") {
+    return `Prior reader-order scene context:\n${formatPriorSceneContext(listPriorScenes(filePath, parsed))}`;
+  }
+
+  if (settings.priorContext === "chronology") {
+    return `Prior story-chronology context:\n${formatPriorChronologyContext(listPriorChronologyScenes(filePath, parsed))}`;
+  }
+
+  return "";
 }
 
 function getTargetNames(targetConfig) {
@@ -1584,6 +1686,9 @@ function buildStandardMetricPrompt(
   const linkedTargets = targetConfig.sceneOnly
     ? []
     : linkedTargetEntries(parsed.content, targetNames);
+  const valueKind = standardMetricValueKind(settings, targetConfig);
+  const sceneContext = standardMetricSceneContext(settings);
+  const priorContext = standardMetricPriorContext(settings);
 
   if (targetConfig.sceneOnly) {
     return `
@@ -1594,7 +1699,9 @@ Every opened object must be closed.
 Do not include markdown.
 
 Score only this scene.
-Do not use other scenes, truth ledgers, chronology, or external story context.
+${settings.priorContext
+    ? "Use only the current scene and the explicitly supplied bounded context. Do not use truth ledgers or external story context."
+    : "Do not use other scenes, truth ledgers, chronology, or external story context."}
 This is a scene craft score, not a story trajectory delta.
 
 ${calibrationGuidance}
@@ -1604,6 +1711,10 @@ ${standardMetricRationaleInstructions(settings)}
 Use this definition of ${metricName}:
 ${metricDefinition}
 
+${sceneContext}
+
+${priorContext}
+
 Scene:
 
 ${parsed.content}
@@ -1611,7 +1722,7 @@ ${parsed.content}
 Required JSON:
 {
   "${targetConfig.key}": {
-    "score": number${standardMetricRationaleJsonShape(settings, "    ")}
+    "${valueKind}": number${standardMetricRationaleJsonShape(settings, "    ")}
   }
 }
 `;
@@ -1630,16 +1741,17 @@ ${JSON.stringify(targetNames, null, 2)}
 ${targetConfig.pluralLabel} explicitly linked in this scene:
 ${formatLinkedTargetEntries(linkedTargets)}
 
-You must return one delta object for every listed ${targetConfig.label}.
+You must return one ${valueKind} object for every listed ${targetConfig.label}.
 Use EXACTLY the listed names as JSON keys.
 Do not omit any listed item.
 Do not add unlisted items.
-If an item barely changes in this scene, still include it with delta 0 or a low delta and configured rationale output.
+${valueKind === "score"
+    ? "If evidence for an item is weak, still include it with a conservative score and configured rationale output."
+    : "If an item barely changes in this scene, still include it with delta 0 or a low delta and configured rationale output."}
 
-Score delta from 0-10.
-This is a scene delta/change observation, not an absolute state score.
-Measure how much this scene changes, advances, pressures, reveals, complicates, reinforces, or resolves the selected dimension for each listed ${targetConfig.label}.
-Do not score general importance, screen time, or static relevance.
+${valueKind === "score"
+    ? `Score from 0-10.\nThis is a per-scene assessment, not a trajectory delta.\nMeasure how strongly the scene satisfies the selected dimension for each listed ${targetConfig.label}.`
+    : `Score delta from 0-10.\nThis is a scene delta/change observation, not an absolute state score.\nMeasure how much this scene changes, advances, pressures, reveals, complicates, reinforces, or resolves the selected dimension for each listed ${targetConfig.label}.\nDo not score general importance, screen time, or static relevance.`}
 
 ${calibrationGuidance}
 
@@ -1651,6 +1763,10 @@ ${metricDefinition}
 Use these ${targetConfig.pluralLabel} definitions:
 ${targetDefinitions}
 
+${sceneContext}
+
+${priorContext}
+
 Scene:
 
 ${parsed.content}
@@ -1658,9 +1774,9 @@ ${parsed.content}
 Required JSON:
 {
   "${targetConfig.key}": {
-    "delta": number${standardMetricRationaleJsonShape(settings, "    ")},
+    "${valueKind}": number${standardMetricRationaleJsonShape(settings, "    ")},
     "${targetConfig.label}Name": {
-      "delta": number${standardMetricRationaleJsonShape(settings, "      ")}
+      "${valueKind}": number${standardMetricRationaleJsonShape(settings, "      ")}
     }
   }
 }
@@ -1673,7 +1789,10 @@ async function evaluateStandardMetric(metricName, targetName) {
   const canonicalTargetName = targetConfig.target;
   const settings = standardMetricSettings(metricName);
 
-  const targetDefinitionEntries = getTargetDefinitions(targetConfig);
+  const targetDefinitionEntries = selectStandardMetricDefinitions(
+    getTargetDefinitions(targetConfig),
+    settings
+  );
   const targetNames = targetDefinitionEntries.map((definition) => definition.name);
   const targetDefinitions = targetConfig.sceneOnly
     ? ""
@@ -1711,7 +1830,9 @@ async function evaluateStandardMetric(metricName, targetName) {
 
     const sourceText = standardMetricSourceText(settings, {
       scene: parsed.content,
-      definitions: `${readDefinition(pocRoot, storyFolders.metrics, metricName)}\n\n${targetDefinitions}`
+      definitions: `${readDefinition(pocRoot, storyFolders.metrics, metricName)}\n\n${targetDefinitions}`,
+      sceneContext: standardMetricSceneContext(settings),
+      priorScenes: standardMetricPriorContext(settings)
     });
 
     normalizedScores = targetConfig.sceneOnly
@@ -1923,6 +2044,25 @@ async function evaluateCharacterAwareness(targetName) {
 }
 
 function getReaderAwarenessGuidance(targetConfig) {
+  if (targetConfig.readerAwareness && typeof targetConfig.readerAwareness === "object") {
+    return {
+      subject: targetConfig.readerAwareness.subject ?? targetConfig.pluralLabel,
+      meaning: targetConfig.readerAwareness.meaning ??
+        `Reader awareness means how much NEW information the reader gains during this scene about a ${targetConfig.label}.`,
+      low: targetConfig.readerAwareness.low ??
+        `1-3 = the reader gains minor, indirect, or confirmatory information about the ${targetConfig.label}.`,
+      medium: targetConfig.readerAwareness.medium ??
+        `4-6 = the reader gains meaningful new information or a clearer connection.`,
+      high: targetConfig.readerAwareness.high ??
+        `7-9 = the reader gains major new understanding of the ${targetConfig.label}.`,
+      decisive: targetConfig.readerAwareness.decisive ??
+        `10 = the reader receives a decisive revelation about the ${targetConfig.label}.`,
+      cautions: Array.isArray(targetConfig.readerAwareness.cautions)
+        ? targetConfig.readerAwareness.cautions
+        : ["Do not score general importance.", "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."]
+    };
+  }
+
   if (targetConfig.key === "characters") {
     return {
       subject: "characters",
@@ -1969,20 +2109,40 @@ function getReaderAwarenessGuidance(targetConfig) {
     };
   }
 
+  if (targetConfig.key === "plotThreads") {
+    return {
+      subject: "plot threads",
+      meaning:
+        "Reader awareness means how much NEW information the reader gains during this scene about a plot thread.",
+      low:
+        "1-3 = the reader gains minor, indirect, or confirmatory information about the plot thread.",
+      medium:
+        "4-6 = the reader gains meaningful new information or a clearer connection.",
+      high:
+        "7-9 = the reader gains major new understanding.",
+      decisive:
+        "10 = the reader receives a decisive revelation about the plot thread.",
+      cautions: [
+        "Do not score plot importance.",
+        "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."
+      ]
+    };
+  }
+
   return {
-    subject: "plot threads",
+    subject: targetConfig.pluralLabel,
     meaning:
-      "Reader awareness means how much NEW information the reader gains during this scene about a plot thread.",
+      `Reader awareness means how much NEW information the reader gains during this scene about a ${targetConfig.label}.`,
     low:
-      "1-3 = the reader gains minor, indirect, or confirmatory information about the plot thread.",
+      `1-3 = the reader gains minor, indirect, or confirmatory information about the ${targetConfig.label}.`,
     medium:
-      "4-6 = the reader gains meaningful new information or a clearer connection.",
+      `4-6 = the reader gains meaningful new information or a clearer connection about the ${targetConfig.label}.`,
     high:
-      "7-9 = the reader gains major new understanding.",
+      `7-9 = the reader gains major new understanding of the ${targetConfig.label}.`,
     decisive:
-      "10 = the reader receives a decisive revelation about the plot thread.",
+      `10 = the reader receives a decisive revelation about the ${targetConfig.label}.`,
     cautions: [
-      "Do not score plot importance.",
+      "Do not score general importance.",
       "If the scene repeats information the reader already had, use delta 0 or a low confirmatory score."
     ]
   };
@@ -2066,12 +2226,6 @@ ${awarenessJsonShape(targetConfig)}
 
 async function evaluateReaderAwareness(targetName) {
   const targetConfig = getTargetConfig(targetName);
-
-  if (!["characters", "plotThreads", "arcs"].includes(targetConfig.key)) {
-    throw new Error(
-      `reader awareness only supports targets "character", "plot thread", and "arc". Received "${targetName}".`
-    );
-  }
 
   const targetDefinitionEntries = getTargetDefinitions(targetConfig);
   const targetNames = targetDefinitionEntries.map((definition) => definition.name);

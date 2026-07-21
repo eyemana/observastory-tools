@@ -110,6 +110,32 @@ Crawler settings refer to those same folder keys:
 
 That keeps folder names in one place: change `story.folders.scenes`, and every tool using the `scenes` key follows it.
 
+If the story folders live directly at the Obsidian vault root, set:
+
+```json
+"story": {
+  "root": "."
+}
+```
+
+With the default folder names, this resolves `Scenes`, `Characters`, `Reports`, and the other configured folders directly under the vault root. Relative paths are always resolved from the vault root, not from `observastory-tools` or the terminal's current directory.
+
+### Generic metric extension settings
+
+A standard metric note supplies the evaluation meaning. Its optional `standardMetrics.metrics` entry controls the reusable execution contract:
+
+- `valueKind`: `score` for a per-scene assessment or `delta` for scene movement along a trajectory.
+- `contextFields`: frontmatter fields to include in the bounded prompt context.
+- `priorContext`: `readerOrder` or `chronology`; omit it for current-scene-only evaluation.
+- `targetSelection.mode`: set to `sceneFields` to evaluate only entities named by configured fields.
+- `targetSelection.fields`: frontmatter fields containing entity names.
+- `targetSelection.includeLinked`: also select matching Obsidian links in the scene prose.
+- `targetSelection.fallback`: use `all` to retain the ordinary all-eligible-target behavior when no scene target matches.
+
+Extractive rationale sources may be selected from `scene`, `definitions`, `sceneContext`, and `priorScenes`.
+
+Entity types may provide a `readerAwareness` object containing `subject`, rubric text, and cautions. This allows Reader Awareness to evaluate a new configured story-thing type without adding a target-specific evaluator branch.
+
 Scene lifecycle calibration is controlled by each scene's `status` frontmatter. Missing status defaults to `draft`.
 
 ```yaml
