@@ -47,31 +47,36 @@
         "target": "character",
         "folderKeys": ["characters"],
         "label": "character",
-        "pluralLabel": "characters"
+        "pluralLabel": "characters",
+        "referenceFields": ["characters", "pov"]
       },
       "plotThreads": {
         "target": "plot thread",
         "folderKeys": ["plotThreads"],
         "label": "plot thread",
-        "pluralLabel": "plot threads"
+        "pluralLabel": "plot threads",
+        "referenceFields": ["plotThreads"]
       },
       "storyEngines": {
         "target": "story engine",
         "folderKeys": ["storyEngines"],
         "label": "story engine",
-        "pluralLabel": "story engines"
+        "pluralLabel": "story engines",
+        "referenceFields": ["storyEngines"]
       },
       "arcs": {
         "target": "arc",
         "folderKeys": ["arcs"],
         "label": "arc",
-        "pluralLabel": "arcs"
+        "pluralLabel": "arcs",
+        "referenceFields": ["arcs"]
       },
       "narrators": {
         "target": "narrator",
         "folderKeys": ["narrators"],
         "label": "narrator",
         "pluralLabel": "narrators",
+        "referenceFields": ["narrators", "narrator", "pov"],
         "readerAwareness": {
           "subject": "narrator identities",
           "meaning": "Reader awareness means how much NEW information this scene gives the reader about a narrator's identity, role, access, motives, relationship to the narrated subject, or reliability.",
@@ -161,7 +166,7 @@
         "rationaleType": "voice consistency rationale",
         "valueKind": "score",
         "contextFields": ["pov", "narrator"],
-        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "all" }
+        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "none" }
       },
       "POV Legibility": {
         "rationaleType": "POV legibility rationale",
@@ -173,14 +178,14 @@
         "valueKind": "score",
         "contextFields": ["pov", "narrator"],
         "priorContext": "readerOrder",
-        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "all" }
+        "targetSelection": { "mode": "sceneFields", "fields": ["narrator", "pov"], "fallback": "none" }
       },
       "Knowledge Integrity": {
         "rationaleType": "knowledge integrity rationale",
         "valueKind": "score",
         "contextFields": ["pov"],
         "priorContext": "chronology",
-        "targetSelection": { "mode": "sceneFields", "fields": ["characters", "pov"], "includeLinked": true, "fallback": "all" }
+        "targetSelection": { "mode": "sceneFields", "fields": ["characters", "pov"], "includeLinked": true, "fallback": "none" }
       }
     }
   },

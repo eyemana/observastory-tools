@@ -7,6 +7,7 @@ import { createEvaluatorRegistry } from "./evaluator-registry.mjs";
 import { createResponsePolicy } from "./response-policy.mjs";
 import { createEvaluationStore } from "./evaluation-store.mjs";
 import { createEvaluatorFamilies } from "./evaluator-families.mjs";
+import { selectReferencedDefinitions } from "./target-selection.mjs";
 import {
   relationshipContractFor,
   relationshipContracts,
@@ -350,7 +351,7 @@ function explicitTargetField(prefix, targetConfig) {
   return `${prefix}${targetConfig.key[0].toUpperCase()}${targetConfig.key.slice(1)}`;
 }
 
-function getTargetDefinitions(targetConfig) {
+function getTargetDefinitions(targetConfig, selection = {}) {
   if (targetConfig.sceneOnly) {
     return [];
   }
@@ -371,54 +372,20 @@ function getTargetDefinitions(targetConfig) {
     )
   );
 
-  return definitions.filter((definition) => filteredNames.has(definition.name));
+  const filtered = definitions.filter((definition) => filteredNames.has(definition.name));
+  return selectReferencedDefinitions({
+    definitions: filtered,
+    sceneData: parsed.data,
+    sceneContent,
+    targetConfig,
+    selection
+  });
 }
 
 sceneContent = resolveSceneText(filePath, {
   scenesRoot,
   maxDepth: config.sceneComposition?.maxDepth
 }).content;
-
-function valuesFromSceneFields(fieldNames) {
-  return fieldNames.flatMap((fieldName) => {
-    const value = parsed.data[fieldName];
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-
-    return value === null || value === undefined || value === "" ? [] : [value];
-  });
-}
-
-function selectStandardMetricDefinitions(definitions, settings) {
-  const selection = settings.targetSelection;
-
-  if (!selection || selection.mode !== "sceneFields") {
-    return definitions;
-  }
-
-  const canonicalNames = new Map(
-    definitions.map((definition) => [definition.name.toLowerCase(), definition.name])
-  );
-  const selectedNames = new Set(
-    valuesFromSceneFields(Array.isArray(selection.fields) ? selection.fields : [])
-      .map((value) => canonicalNames.get(normalizeLinkTargetName(value).toLowerCase()))
-      .filter(Boolean)
-  );
-
-  if (selection.includeLinked === true) {
-    for (const linked of linkedTargetEntries(sceneContent, definitions.map((definition) => definition.name))) {
-      selectedNames.add(linked.name);
-    }
-  }
-
-  if (selectedNames.size === 0 && selection.fallback === "all") {
-    return definitions;
-  }
-
-  return definitions.filter((definition) => selectedNames.has(definition.name));
-}
 
 function standardMetricSceneContext(settings) {
   const context = {};
@@ -573,7 +540,6 @@ const evaluatorFamilies = createEvaluatorFamilies({
   sceneContent,
   getTargetConfig,
   getTargetDefinitions,
-  selectStandardMetricDefinitions,
   standardMetricSettings,
   standardMetricValueKind,
   standardMetricSceneContext,

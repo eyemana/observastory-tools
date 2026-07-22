@@ -127,10 +127,10 @@ A standard metric note supplies the evaluation meaning. Its optional `standardMe
 - `valueKind`: `score` for a per-scene assessment or `delta` for scene movement along a trajectory.
 - `contextFields`: frontmatter fields to include in the bounded prompt context.
 - `priorContext`: `readerOrder` or `chronology`; omit it for current-scene-only evaluation.
-- `targetSelection.mode`: set to `sceneFields` to evaluate only entities named by configured fields.
+- `targetSelection.mode`: metadata and matching Obsidian links select entities by default; use `all` only for an intentionally global evaluation.
 - `targetSelection.fields`: frontmatter fields containing entity names.
-- `targetSelection.includeLinked`: also select matching Obsidian links in the scene prose.
-- `targetSelection.fallback`: use `all` to retain the ordinary all-eligible-target behavior when no scene target matches.
+- `targetSelection.includeLinked`: defaults to true; set false only when a metric deliberately ignores links in scene prose.
+- `targetSelection.fallback`: retained for configuration compatibility, but does not opt into every definition; use `mode: "all"` explicitly instead.
 
 Extractive rationale sources may be selected from `scene`, `definitions`, `sceneContext`, and `priorScenes`.
 
@@ -292,7 +292,7 @@ Scene identity comes from the filename without the `.md` extension.
 
 Story-element kind comes from folder location, and story-element identity comes from the filename without the `.md` extension. Story-element notes can use `status` and `tags` for filtering. The default profile includes all element notes except those with excluded statuses such as `scratch`, `archived`, or `inactive`, or excluded tags such as `no-evaluate`.
 
-Scene-level entity attention comes from Obsidian links. Link to notes such as `[[Mara Bell]]` or `[[Missing Ledger]]` in the scene body when you want the report and evaluator prompt context to treat that entity as intentionally present. You do not need root-level scene frontmatter fields like `characters`, `plotThreads`, or `arcs`.
+Scene-level entity attention comes from metadata callouts and Obsidian links. Link to notes such as `[[Mara Bell]]` or `[[Missing Ledger]]`, or name them in their configured `referenceFields`, when you want entity and relationship evaluators to consider them. With no matching callout, Observastory runs scene-level evaluations only; it does not evaluate every eligible definition.
 
 For rare scene-specific exceptions, use explicit include/exclude fields:
 
@@ -345,6 +345,8 @@ Supported scene statuses:
 - `scratch`: private working material; excluded from evaluation, Truth Ledger, and normal story reports.
 - `draft`: working scene; evaluated with draft calibration. Links are treated as strong author intent, and polish-facing scores such as Pacing, Poetics, and Coherence may be capped so known deficiencies remain visible.
 - `live`: ready-for-book scene; evaluated without draft dampening. Scaffolding, TODOs, placeholders, outline fragments, and paraphrase should hurt the appropriate craft scores.
+
+Lifecycle status and Scaffolding answer different questions. `draft` is author workflow state; Scaffolding measures visible support material in the actual scene text. Draft status therefore does not automatically raise Scaffolding.
 - `archived`: old scene version; excluded from evaluation, Truth Ledger, and normal story reports.
 
 The default profile includes element notes and scenes unless they opt out through an excluded status or an excluded tag. To skip a scene in the normal queue without changing its lifecycle, tag it like this:

@@ -9,7 +9,6 @@ export function createEvaluatorFamilies({
   sceneContent,
   getTargetConfig,
   getTargetDefinitions,
-  selectStandardMetricDefinitions,
   standardMetricSettings,
   standardMetricValueKind,
   standardMetricSceneContext,
@@ -62,11 +61,9 @@ export function createEvaluatorFamilies({
     const targetConfig = getTargetConfig(targetName);
     const canonicalTargetName = targetConfig.target;
     const settings = standardMetricSettings(metricName);
-    const targetDefinitionEntries = selectStandardMetricDefinitions(
-      getTargetDefinitions(targetConfig),
-      settings
-    );
+    const targetDefinitionEntries = getTargetDefinitions(targetConfig, settings.targetSelection);
     const targetNames = targetDefinitionEntries.map(definition => definition.name);
+    if (!targetConfig.sceneOnly && targetNames.length === 0) return false;
     const targetDefinitions = targetConfig.sceneOnly
       ? ""
       : formatDefinitions(targetDefinitionEntries);
@@ -100,41 +97,29 @@ export function createEvaluatorFamilies({
       return false;
     }
 
-    let normalizedScores;
-
-    if (!targetConfig.sceneOnly && targetNames.length === 0) {
-      normalizedScores = { scene: 0, items: {} };
-      if (settings.rationaleMode === "paraphrase") {
-        normalizedScores[settings.rationaleField] =
-          `No eligible ${targetConfig.pluralLabel} were available for this evaluation.`;
-      } else if (settings.rationaleMode === "extractive") {
-        normalizedScores.evidence = [];
-      }
-    } else {
-      const { rawResponse, parsedResponse: scores } = await requestModelJson(prompt);
-      const sourceText = standardMetricSourceText(settings, {
-        scene: sceneContent,
-        definitions: `${definition}\n\n${targetDefinitions}`,
-        sceneContext,
-        priorScenes: priorContext
-      });
-      normalizedScores = targetConfig.sceneOnly
-        ? normalizeSceneOnlyScore(
-          scores[targetConfig.key],
-          metricName,
-          rawResponse,
-          settings,
-          sourceText
-        )
-        : normalizeSubjectRelationshipScoreMap(
-          scores[targetConfig.key],
-          targetNames,
-          targetConfig.label,
-          rawResponse,
-          settings,
-          sourceText
-        );
-    }
+    const { rawResponse, parsedResponse: scores } = await requestModelJson(prompt);
+    const sourceText = standardMetricSourceText(settings, {
+      scene: sceneContent,
+      definitions: `${definition}\n\n${targetDefinitions}`,
+      sceneContext,
+      priorScenes: priorContext
+    });
+    let normalizedScores = targetConfig.sceneOnly
+      ? normalizeSceneOnlyScore(
+        scores[targetConfig.key],
+        metricName,
+        rawResponse,
+        settings,
+        sourceText
+      )
+      : normalizeSubjectRelationshipScoreMap(
+        scores[targetConfig.key],
+        targetNames,
+        targetConfig.label,
+        rawResponse,
+        settings,
+        sourceText
+      );
 
     normalizedScores = applyCalibrationToStandardScores(normalizedScores, metricName);
     writeStandardMetricObservations(metricName, targetConfig, normalizedScores, settings);
@@ -161,7 +146,7 @@ export function createEvaluatorFamilies({
       };
     }
 
-    const targetDefinitionEntries = getTargetDefinitions(targetConfig);
+    const targetDefinitionEntries = getTargetDefinitions(targetConfig, contract.targetSelection);
     const targetNames = targetDefinitionEntries.map(definition => definition.name);
     const targetDefinitions = formatDefinitions(targetDefinitionEntries);
     let observerDefinitionEntries = [];
@@ -171,7 +156,7 @@ export function createEvaluatorFamilies({
       const observerConfig = getTargetConfig(
         contract.observer.target ?? contract.observer.entityType ?? contract.observer.key
       );
-      observerDefinitionEntries = getTargetDefinitions(observerConfig);
+      observerDefinitionEntries = getTargetDefinitions(observerConfig, contract.observer.targetSelection);
       observers = observerDefinitionEntries.map(definition => ({
         type: observerConfig.key,
         name: definition.name
@@ -184,6 +169,7 @@ export function createEvaluatorFamilies({
     }
 
     const observerNames = observers.map(observer => observer.name);
+    if (targetNames.length === 0 || observerNames.length === 0) return false;
     const priorScenes = contract.priorContext === "chronology"
       ? listPriorChronologyScenes()
       : listPriorScenes();
@@ -253,8 +239,9 @@ export function createEvaluatorFamilies({
     if (!contract) {
       throw new Error(`No trajectory contract permits "${metricName}" for target "${targetName}".`);
     }
-    const definitions = getTargetDefinitions(targetConfig);
+    const definitions = getTargetDefinitions(targetConfig, contract.targetSelection);
     const targetNames = definitions.map(definition => definition.name);
+    if (targetNames.length === 0) return false;
     const targetDefinitions = formatDefinitions(definitions);
     const priorScenes = contract.priorContext === "chronology"
       ? listPriorChronologyScenes()

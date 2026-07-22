@@ -47,7 +47,6 @@ function familyFixture(overrides = {}) {
     sceneContent: "Mara waits at the harbor.",
     getTargetConfig: name => targetConfigs[name],
     getTargetDefinitions: () => [],
-    selectStandardMetricDefinitions: definitions => definitions,
     standardMetricSettings: () => ({
       rationaleMode: "paraphrase",
       rationaleField: "rationale",
@@ -80,15 +79,13 @@ function familyFixture(overrides = {}) {
   return { families, writes, marks, targetConfigs };
 }
 
-test("standard evaluator handles an empty configured target set without a model call", async () => {
+test("standard evaluator skips an unreferenced target set without a model call", async () => {
   const { families, writes, marks } = familyFixture();
   const updated = await families.evaluateStandardMetric("Tension", "character");
 
-  assert.equal(updated, true);
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0][2].scene, 0);
-  assert.deepEqual(writes[0][2].items, {});
-  assert.equal(marks.length, 1);
+  assert.equal(updated, false);
+  assert.equal(writes.length, 0);
+  assert.equal(marks.length, 0);
 });
 
 test("configured relationship evaluator handles arbitrary observer-target pairs", async () => {

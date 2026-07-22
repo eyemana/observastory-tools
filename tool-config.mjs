@@ -27,6 +27,7 @@ export const defaultConfig = {
         folderKeys: ["characters"],
         label: "character",
         pluralLabel: "characters",
+        referenceFields: ["characters", "pov"],
         readerAwareness: {
           subject: "characters",
           meaning: "Measure how much the scene increases, refreshes, or reinforces reader-facing awareness of each character through visible information, action, relationship, choice, reputation, or memorable detail.",
@@ -42,6 +43,7 @@ export const defaultConfig = {
         folderKeys: ["plotThreads"],
         label: "plot thread",
         pluralLabel: "plot threads",
+        referenceFields: ["plotThreads"],
         readerAwareness: {
           meaning: "Measure how much new or meaningfully reinforced information the reader receives about each configured plot thread.",
           cautions: ["Do not score plot importance or author-only intent."]
@@ -51,13 +53,15 @@ export const defaultConfig = {
         target: "story engine",
         folderKeys: ["storyEngines"],
         label: "story engine",
-        pluralLabel: "story engines"
+        pluralLabel: "story engines",
+        referenceFields: ["storyEngines"]
       },
       arcs: {
         target: "arc",
         folderKeys: ["arcs"],
         label: "arc",
         pluralLabel: "arcs",
+        referenceFields: ["arcs"],
         readerAwareness: {
           meaning: "Measure how much new evidence the reader receives about the configured change described by this definition.",
           cautions: [
@@ -71,6 +75,7 @@ export const defaultConfig = {
         folderKeys: ["narrators"],
         label: "narrator",
         pluralLabel: "narrators",
+        referenceFields: ["narrators", "narrator", "pov"],
         readerAwareness: {
           subject: "narrator identities",
           meaning: "Reader awareness means how much NEW information this scene gives the reader about a narrator's identity, role, access, motives, relationship to the narrated subject, or reliability.",
@@ -155,7 +160,7 @@ export const defaultConfig = {
         targetSelection: {
           mode: "sceneFields",
           fields: ["narrator", "pov"],
-          fallback: "all"
+          fallback: "none"
         }
       },
       "POV Legibility": {
@@ -171,7 +176,7 @@ export const defaultConfig = {
         targetSelection: {
           mode: "sceneFields",
           fields: ["narrator", "pov"],
-          fallback: "all"
+          fallback: "none"
         }
       },
       "Knowledge Integrity": {
@@ -183,7 +188,7 @@ export const defaultConfig = {
           mode: "sceneFields",
           fields: ["characters", "pov"],
           includeLinked: true,
-          fallback: "all"
+          fallback: "none"
         }
       }
     }
@@ -431,6 +436,11 @@ export function getSchedulerConfig(toolRoot) {
 }
 
 export function getStoryConfig(config) {
+  const configuredEntityTypes = config.story?.entityTypes ?? {};
+  const entityTypeKeys = new Set([
+    ...Object.keys(defaultConfig.story.entityTypes),
+    ...Object.keys(configuredEntityTypes)
+  ]);
   return {
     ...defaultConfig.story,
     ...(config.story ?? {}),
@@ -438,10 +448,10 @@ export function getStoryConfig(config) {
       ...defaultConfig.story.folders,
       ...(config.story?.folders ?? {})
     },
-    entityTypes: {
-      ...defaultConfig.story.entityTypes,
-      ...(config.story?.entityTypes ?? {})
-    }
+    entityTypes: Object.fromEntries([...entityTypeKeys].map(key => [key, {
+      ...(defaultConfig.story.entityTypes[key] ?? {}),
+      ...(configuredEntityTypes[key] ?? {})
+    }]))
   };
 }
 
