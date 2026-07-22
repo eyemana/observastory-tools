@@ -3,16 +3,23 @@ import path from "path";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import matter from "gray-matter";
+import { requestJsonFromOllama } from "../model/ollama-json-client.mjs";
 
 import {
-  defaultTruthLedgerPaths,
   getStoryConfig,
   loadConfig,
   storyPath,
   storyEntityTypePaths
 } from "../tool-config.mjs";
 import { listEligibleDefinitionsFromPaths } from "../evaluation-filters.mjs";
-import { authorMarkdownFingerprint } from "../fingerprints.mjs";
+import {
+  describeTruthLedgerSource,
+  listTruthLedgerSources,
+  truthLedgerInferenceInput,
+  truthLedgerScanRoots,
+  truthLedgerSourceFingerprint,
+  truthLedgerSourceMetadata
+} from "./truth-sources.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -102,31 +109,6 @@ function resolvePath(root, candidate) {
   return path.isAbsolute(candidate)
     ? candidate
     : path.resolve(root, candidate);
-}
-
-function walkMarkdownFiles(root) {
-  if (!fs.existsSync(root)) {
-    return [];
-  }
-
-  const files = [];
-  const entries = fs.readdirSync(root, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-
-    const entryPath = path.join(root, entry.name);
-
-    if (entry.isDirectory()) {
-      files.push(...walkMarkdownFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(entryPath);
-    }
-  }
-
-  return files;
 }
 
 function stripCalloutPrefix(line) {
@@ -580,39 +562,29 @@ function extractClaimBlocks(filePath, vaultRoot, entityCatalog) {
   return blocks;
 }
 
-function markdownBody(filePath) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  return matter(raw).content.trim();
+function attachSourceContext(claim, source, vaultRoot) {
+  const metadata = truthLedgerSourceMetadata(source, vaultRoot);
+  claim.source = {
+    ...(claim.source ?? {}),
+    kind: metadata.kind,
+    dependencies: metadata.dependencies
+  };
+  claim.support = (Array.isArray(claim.support) ? claim.support : []).map(record => ({
+    ...record,
+    sourceKind: metadata.kind,
+    dependencies: metadata.dependencies
+  }));
+  return claim;
 }
 
 async function fetchJsonFromOllama(prompt) {
-  const response = await fetch(config.ollamaUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: config.model,
-      format: "json",
-      prompt,
-      stream: false,
-      options: {
-        temperature: 0
-      }
-    })
+  const { parsedResponse } = await requestJsonFromOllama({
+    url: config.ollamaUrl,
+    model: config.model,
+    prompt
   });
 
-  if (!response.ok) {
-    throw new Error(`Ollama returned HTTP ${response.status}`);
-  }
-
-  const result = await response.json();
-
-  try {
-    return JSON.parse(result.response);
-  } catch {
-    throw new Error(`Invalid JSON response: ${result.response}`);
-  }
+  return parsedResponse;
 }
 
 function buildInferencePrompt(relativePath, content, inferenceConfig, entityCatalog) {
@@ -750,14 +722,15 @@ function normalizeInferredClaim(rawClaim, filePath, relativePath, content, index
   };
 }
 
-async function inferClaimsFromFile(filePath, vaultRoot, inferenceConfig, entityCatalog) {
-  const content = markdownBody(filePath);
+async function inferClaimsFromSource(source, vaultRoot, inferenceConfig, entityCatalog) {
+  const content = truthLedgerInferenceInput(source, config);
 
   if (!content) {
     return [];
   }
 
-  const relativePath = path.relative(vaultRoot, filePath);
+  const filePath = source.path;
+  const relativePath = source.relativePath;
   const response = await fetchJsonFromOllama(
     buildInferencePrompt(relativePath, content, inferenceConfig, entityCatalog)
   );
@@ -768,20 +741,25 @@ async function inferClaimsFromFile(filePath, vaultRoot, inferenceConfig, entityC
       normalizeInferredClaim(rawClaim, filePath, relativePath, content, index, entityCatalog)
     )
     .filter(Boolean)
+    .map(claim => attachSourceContext(claim, source, vaultRoot))
     .filter(claim => claim.confidence >= inferenceConfig.minConfidence);
 }
 
-async function inferClaims(files, vaultRoot, inferenceConfig, warnings, entityCatalog) {
+async function inferClaims(sources, vaultRoot, inferenceConfig, warnings, entityCatalog) {
   const inferredClaims = [];
 
-  for (const filePath of files) {
+  for (const source of sources) {
+    if (!source.infer) {
+      continue;
+    }
+
     try {
       inferredClaims.push(
-        ...(await inferClaimsFromFile(filePath, vaultRoot, inferenceConfig, entityCatalog))
+        ...(await inferClaimsFromSource(source, vaultRoot, inferenceConfig, entityCatalog))
       );
     } catch (error) {
       warnings.push(
-        `Could not infer claims from ${path.relative(vaultRoot, filePath)}: ${error.message}`
+        `Could not infer claims from ${source.relativePath}: ${error.message}`
       );
     }
   }
@@ -861,7 +839,6 @@ async function main() {
     toolRoot,
     readOption("--output") ?? truthConfig.outputPath ?? ".index/truth-ledger.json"
   );
-  const configuredPaths = defaultTruthLedgerPaths(config);
   const explicitFiles = [...new Set(
     readOptions("--file")
       .map(filePath => resolvePath(vaultRoot, filePath))
@@ -882,25 +859,31 @@ async function main() {
     inferenceConfig.enabled = false;
   }
 
-  const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
   const entityCatalog = buildEntityCatalog(vaultRoot);
-  const files = explicitFiles.length > 0
-    ? explicitFiles
-    : [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
-  const claims = files
-    .flatMap(filePath => extractClaimBlocks(filePath, vaultRoot, entityCatalog))
+  const sources = explicitFiles.length > 0
+    ? explicitFiles.map(filePath => describeTruthLedgerSource(filePath, { config, vaultRoot }))
+    : listTruthLedgerSources({ config, vaultRoot });
+  const fingerprints = new Map(sources.map(source => [
+    source.path,
+    truthLedgerSourceFingerprint(source, config)
+  ]));
+  const claims = sources
+    .flatMap(source => extractClaimBlocks(source.path, vaultRoot, entityCatalog)
+      .map(claim => attachSourceContext(claim, source, vaultRoot)))
     .sort(sortClaims);
   const { errors, warnings } = validateClaims(
     claims,
-    explicitFiles.length > 0 ? explicitFiles : scanRoots
+    explicitFiles.length > 0
+      ? explicitFiles
+      : truthLedgerScanRoots({ config, vaultRoot })
   );
   const inferredClaims = errors.length === 0 && inferenceConfig.enabled
-    ? await inferClaims(files, vaultRoot, inferenceConfig, warnings, entityCatalog)
+    ? await inferClaims(sources, vaultRoot, inferenceConfig, warnings, entityCatalog)
     : [];
   const generatedAt = new Date().toISOString();
-  const sourceFingerprints = files.map(filePath => ({
-    path: path.relative(vaultRoot, filePath),
-    fingerprint: authorMarkdownFingerprint(filePath),
+  const sourceFingerprints = sources.map(source => ({
+    ...truthLedgerSourceMetadata(source, vaultRoot),
+    fingerprint: fingerprints.get(source.path),
     updatedAt: generatedAt
   }));
   const index = {

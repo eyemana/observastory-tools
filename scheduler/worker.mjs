@@ -8,7 +8,6 @@ import matter from "gray-matter";
 import {
   defaultScenesPath,
   defaultChronologyPaths,
-  defaultTruthLedgerPaths,
   getSchedulerConfig,
   getStoryConfig,
   loadConfig,
@@ -21,11 +20,15 @@ import {
   listEligibleSceneFiles,
   mergeFilterConfigs
 } from "../evaluation-filters.mjs";
-import { authorMarkdownFingerprint } from "../fingerprints.mjs";
 import {
   listSceneFiles,
   sceneCompositionFingerprint
 } from "../scene-composition.mjs";
+import {
+  listTruthLedgerSources,
+  truthLedgerSourceFingerprint,
+  truthLedgerSourceMetadata
+} from "../truth/truth-sources.mjs";
 import {
   claimJob,
   clearWorkerStop,
@@ -593,35 +596,6 @@ function resolvePath(root, candidate) {
     : path.resolve(root, candidate);
 }
 
-function walkMarkdownFiles(root) {
-  if (!root || !fs.existsSync(root)) {
-    return [];
-  }
-
-  if (fs.statSync(root).isFile()) {
-    return root.endsWith(".md") ? [root] : [];
-  }
-
-  const files = [];
-  const entries = fs.readdirSync(root, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-
-    const entryPath = path.join(root, entry.name);
-
-    if (entry.isDirectory()) {
-      files.push(...walkMarkdownFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(entryPath);
-    }
-  }
-
-  return files;
-}
-
 function writeJsonAtomic(targetPath, value) {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
@@ -900,9 +874,8 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   const vaultRoot = job.vaultRoot
     ? path.resolve(job.vaultRoot)
     : path.resolve(toolRoot, "..");
-  const configuredPaths = defaultTruthLedgerPaths(fullConfig);
-  const scanRoots = configuredPaths.map(scanPath => resolvePath(vaultRoot, scanPath));
-  const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
+  const sources = listTruthLedgerSources({ config: fullConfig, vaultRoot });
+  const files = sources.map(source => source.path);
   const outputPath = resolvePath(
     toolRoot,
     truthConfig.outputPath ?? ".index/truth-ledger.json"
@@ -913,7 +886,7 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   const inferenceSettings = truthLedgerInferenceSettings(fullConfig, truthConfig, job.infer);
   const entityCatalogFingerprint = truthLedgerEntityCatalogFingerprint(fullConfig, vaultRoot);
   const fileFingerprints = new Map(
-    files.map(filePath => [filePath, authorMarkdownFingerprint(filePath)])
+    sources.map(source => [source.path, truthLedgerSourceFingerprint(source, fullConfig)])
   );
   const activeRelativePaths = new Set(files.map(filePath => path.relative(vaultRoot, filePath)));
   const entities = new Map();
@@ -942,12 +915,13 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
   job.updatedAt = new Date().toISOString();
   writeJob(jobPath, job);
 
-  for (const [index, filePath] of files.entries()) {
+  for (const [index, source] of sources.entries()) {
     if (isCancelRequested(paths, job.id)) {
       throw new JobCanceledError();
     }
 
-    const relativePath = path.relative(vaultRoot, filePath);
+    const filePath = source.path;
+    const relativePath = source.relativePath;
     const partialPath = path.join(partialsDir, `${String(index + 1).padStart(5, "0")}.json`);
 
     logLine(logPath, `Collecting ${relativePath}`);
@@ -1062,9 +1036,9 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
 
   const errors = findDuplicateClaimErrors(claims);
   const generatedAt = new Date().toISOString();
-  const sourceFingerprints = files.map(filePath => ({
-    path: path.relative(vaultRoot, filePath),
-    fingerprint: fileFingerprints.get(filePath),
+  const sourceFingerprints = sources.map(source => ({
+    ...truthLedgerSourceMetadata(source, vaultRoot),
+    fingerprint: fileFingerprints.get(source.path),
     updatedAt: generatedAt
   }));
   const index = {

@@ -2,6 +2,9 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 import crypto from "crypto";
+import { requestJsonFromOllama } from "../model/ollama-json-client.mjs";
+import { createTruthLedgerContext } from "./truth-ledger-context.mjs";
+import { createEvaluatorRegistry } from "./evaluator-registry.mjs";
 
 import { fileURLToPath } from "url";
 import {
@@ -15,8 +18,17 @@ import {
   loadConfig,
   storyEntityTypePaths
 } from "../tool-config.mjs";
-import { compareChronologySort } from "../chronology/chronology-utils.mjs";
 import { resolveSceneText } from "../scene-composition.mjs";
+import {
+  compareChronologyOrder,
+  compareStoryOrder,
+  formatPriorChronologyContext,
+  formatPriorSceneContext,
+  getChronologyOrder,
+  getStoryOrder,
+  isPriorChronologyScene,
+  isPriorStoryScene
+} from "./scene-order-context.mjs";
 import {
   applyNameFilters,
   getEvaluationProfile,
@@ -28,6 +40,11 @@ const __filename = fileURLToPath(import.meta.url);
 const evaluatorRoot = path.dirname(__filename);
 const toolRoot = path.join(evaluatorRoot, "..");
 const config = loadConfig(toolRoot);
+const truthLedgerContext = createTruthLedgerContext({
+  config,
+  toolRoot,
+  normalizeTargetName: normalizeLinkTargetName
+});
 const storyConfig = getStoryConfig(config);
 const storyFolders = storyConfig.folders;
 const awarenessConfig = config.awareness ?? {};
@@ -197,14 +214,6 @@ function getTargetConfig(targetName) {
   throw new Error(
     `Invalid target "${targetName}". Expected one of: ${Object.values(targetConfigs).map(targetConfig => targetConfig.target).join(", ")}`
   );
-}
-
-function isCharacterAwarenessMetric(metricName) {
-  return toCamelCase(metricName) === "characterAwareness";
-}
-
-function isReaderAwarenessMetric(metricName) {
-  return toCamelCase(metricName) === "readerAwareness";
 }
 
 function standardMetricSettings(metricName) {
@@ -520,32 +529,11 @@ function normalizeAwarenessEntry(rawValue, sourceText) {
 }
 
 async function fetchJsonFromOllama(prompt) {
-  const response = await fetch(config.ollamaUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: config.model,
-      format: "json",
-      prompt,
-      stream: false,
-      options: {
-        temperature: 0
-      }
-    })
+  return requestJsonFromOllama({
+    url: config.ollamaUrl,
+    model: config.model,
+    prompt
   });
-
-  const result = await response.json();
-
-  try {
-    return {
-      rawResponse: result.response,
-      parsedResponse: JSON.parse(result.response)
-    };
-  } catch {
-    throw new Error(`Invalid JSON response: ${result.response}`);
-  }
 }
 
 function normalizeSubjectRelationshipScoreMap(
@@ -1285,295 +1273,17 @@ function formatLinkedTargetEntries(entries) {
   return JSON.stringify(entries, null, 2);
 }
 
-function normalizePathKey(value) {
-  return String(value ?? "").replace(/\\/g, "/").toLowerCase();
-}
-
 function relativeVaultPath(absolutePath) {
   return path.relative(vaultRoot, absolutePath);
 }
 
-let truthLedgerCache;
-
-function readTruthLedgerIndex() {
-  if (truthLedgerCache !== undefined) {
-    return truthLedgerCache;
-  }
-
-  const outputPath = config.truthLedger?.outputPath ?? ".index/truth-ledger.json";
-  const ledgerPath = path.isAbsolute(outputPath)
-    ? outputPath
-    : path.join(toolRoot, outputPath);
-
-  if (!fs.existsSync(ledgerPath)) {
-    truthLedgerCache = null;
-    return truthLedgerCache;
-  }
-
-  try {
-    truthLedgerCache = JSON.parse(fs.readFileSync(ledgerPath, "utf8"));
-  } catch {
-    truthLedgerCache = null;
-  }
-
-  return truthLedgerCache;
-}
-
-function claimEntities(claim) {
-  const entities = Array.isArray(claim?.entities) ? claim.entities : [];
-
-  return entities
-    .map(entity => ({
-      type: String(entity?.type ?? "").trim(),
-      name: String(entity?.name ?? "").trim()
-    }))
-    .filter(entity => entity.type && entity.name);
-}
-
-function claimLegacyNames(claim, entityTypeKey) {
-  const values = Array.isArray(claim?.[entityTypeKey]) ? claim[entityTypeKey] : [];
-
-  return values
-    .map(value => normalizeLinkTargetName(value))
-    .filter(Boolean);
-}
-
-function claimMatchesTarget(claim, entityTypeKey, targetName) {
-  const normalizedTarget = targetName.toLowerCase();
-
-  if (
-    claimEntities(claim)
-      .some(entity =>
-        entity.type === entityTypeKey &&
-        entity.name.toLowerCase() === normalizedTarget
-      )
-  ) {
-    return true;
-  }
-
-  return claimLegacyNames(claim, entityTypeKey)
-    .some(name => name.toLowerCase() === normalizedTarget);
-}
-
-function supportRecordsForClaim(claim) {
-  const support = Array.isArray(claim?.support) ? claim.support : [];
-
-  if (support.length > 0) {
-    return support;
-  }
-
-  if (!claim?.source?.path) {
-    return [];
-  }
-
-  return [{
-    type: claim.authority ?? "claim",
-    path: claim.source.path,
-    absolutePath: claim.source.absolutePath,
-    line: claim.source.line,
-    excerpt: claim.statement
-  }];
-}
-
-function truncateForPrompt(value, maxLength = 260) {
-  const text = normalizeWhitespace(value);
-
-  if (text.length <= maxLength) {
-    return text;
-  }
-
-  return `${text.slice(0, maxLength - 3)}...`;
-}
-
-function formatSupportList(records) {
-  if (!records.length) {
-    return "None.";
-  }
-
-  return records
-    .slice(0, 3)
-    .map(record => {
-      const location = `${record.path ?? "(unknown)"}:${record.line ?? "?"}`;
-      const excerpt = truncateForPrompt(record.excerpt ?? "");
-      return excerpt ? `- ${location}: ${excerpt}` : `- ${location}`;
-    })
-    .join("\n");
-}
-
-function relationshipMatchesTarget(relationship, targetName) {
-  const normalizedTarget = targetName.toLowerCase();
-
-  return [relationship?.source, relationship?.target, relationship?.statement]
-    .some(value => String(value ?? "").toLowerCase().includes(normalizedTarget));
-}
-
-function formatRelationshipList(relationships, targetName) {
-  const matching = (Array.isArray(relationships) ? relationships : [])
-    .filter(relationship => relationshipMatchesTarget(relationship, targetName))
-    .slice(0, 3);
-
-  if (!matching.length) {
-    return "None.";
-  }
-
-  return matching
-    .map(relationship => {
-      const dimension = relationship.dimension ? ` (${relationship.dimension})` : "";
-      const source = relationship.source || "?";
-      const target = relationship.target || "?";
-      const statement = relationship.statement ? `: ${truncateForPrompt(relationship.statement, 180)}` : "";
-      return `- ${source} -> ${target}${dimension}${statement}`;
-    })
-    .join("\n");
-}
-
 function formatTruthLedgerSupport(targetConfig, targetNames, visibleScenes, visibilityLabel) {
-  const ledger = readTruthLedgerIndex();
-
-  if (!ledger) {
-    return "Truth Ledger index is not available. Run Queue-Truth-Ledger to generate support-map context.";
-  }
-
-  const claims = [
-    ...(Array.isArray(ledger.claims) ? ledger.claims : []),
-    ...(Array.isArray(ledger.inferredClaims) ? ledger.inferredClaims : [])
-  ];
-  const visiblePaths = new Set(
-    visibleScenes.map(scene => normalizePathKey(scene.path))
+  return truthLedgerContext.formatSupport(
+    targetConfig,
+    targetNames,
+    visibleScenes,
+    visibilityLabel
   );
-  const blocks = [];
-
-  for (const targetName of targetNames) {
-    const matchingClaims = claims
-      .filter(claim => claimMatchesTarget(claim, targetConfig.key, targetName))
-      .slice(0, 5);
-
-    if (!matchingClaims.length) {
-      continue;
-    }
-
-    const authorSupport = [];
-    const visibleSupport = [];
-    const relationships = [];
-
-    for (const claim of matchingClaims) {
-      authorSupport.push(...supportRecordsForClaim(claim));
-      visibleSupport.push(
-        ...supportRecordsForClaim(claim)
-          .filter(record => visiblePaths.has(normalizePathKey(record.path)))
-      );
-      relationships.push(...(Array.isArray(claim.relationships) ? claim.relationships : []));
-    }
-
-    blocks.push([
-      `${targetConfig.label}: ${targetName}`,
-      `${visibilityLabel}:`,
-      formatSupportList(visibleSupport),
-      "Author support, not necessarily visible to reader or character yet:",
-      formatSupportList(authorSupport),
-      "Relationships:",
-      formatRelationshipList(relationships, targetName)
-    ].join("\n"));
-  }
-
-  if (!blocks.length) {
-    return "No Truth Ledger support found for the listed targets.";
-  }
-
-  return blocks.join("\n\n---\n\n");
-}
-
-function numericFrontmatter(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function getStoryOrder(scene) {
-  const chapterOrder = numericFrontmatter(scene.data.chapter_order) ??
-    numericFrontmatter(scene.data.chapter);
-  const sceneOrder = numericFrontmatter(scene.data.scene_order);
-
-  if (chapterOrder === null || sceneOrder === null) {
-    return null;
-  }
-
-  return {
-    chapterOrder,
-    sceneOrder
-  };
-}
-
-function getChronologyOrder(scene) {
-  const generatedSort = scene.data.ai?.chronology?.sort;
-
-  if (generatedSort !== undefined && generatedSort !== null && generatedSort !== "") {
-    return String(generatedSort);
-  }
-
-  return null;
-}
-
-function compareStoryOrder(a, b) {
-  if (a.storyOrder && b.storyOrder) {
-    if (a.storyOrder.chapterOrder !== b.storyOrder.chapterOrder) {
-      return a.storyOrder.chapterOrder - b.storyOrder.chapterOrder;
-    }
-
-    if (a.storyOrder.sceneOrder !== b.storyOrder.sceneOrder) {
-      return a.storyOrder.sceneOrder - b.storyOrder.sceneOrder;
-    }
-  } else if (a.storyOrder) {
-    return -1;
-  } else if (b.storyOrder) {
-    return 1;
-  }
-
-  return a.fileName.localeCompare(b.fileName);
-}
-
-function compareChronologyOrder(a, b) {
-  if (a.chronologyOrder !== null && b.chronologyOrder !== null) {
-    const chronology = compareChronologySort(a.chronologyOrder, b.chronologyOrder);
-    if (chronology !== 0) return chronology;
-  } else if (a.chronologyOrder !== null) {
-    return -1;
-  } else if (b.chronologyOrder !== null) {
-    return 1;
-  }
-
-  return compareStoryOrder(a, b);
-}
-
-function isPriorStoryScene(scene, currentOrder, currentName) {
-  if (currentOrder === null) {
-    return scene.fileName.localeCompare(currentName) < 0;
-  }
-
-  if (scene.storyOrder === null) {
-    return false;
-  }
-
-  if (scene.storyOrder.chapterOrder !== currentOrder.chapterOrder) {
-    return scene.storyOrder.chapterOrder < currentOrder.chapterOrder;
-  }
-
-  return scene.storyOrder.sceneOrder < currentOrder.sceneOrder;
-}
-
-function isPriorChronologyScene(scene, currentOrder, currentName) {
-  if (currentOrder === null) {
-    return false;
-  }
-
-  if (scene.chronologyOrder === null) {
-    return false;
-  }
-
-  if (scene.chronologyOrder !== currentOrder) {
-    return compareChronologySort(scene.chronologyOrder, currentOrder) < 0;
-  }
-
-  return scene.fileName.localeCompare(currentName) < 0;
 }
 
 function listPriorScenes(currentFilePath, currentScene) {
@@ -1638,47 +1348,6 @@ function listPriorChronologyScenes(currentFilePath, currentScene) {
     })
     .filter(scene => isPriorChronologyScene(scene, currentOrder, currentName))
     .sort(compareChronologyOrder);
-}
-
-function formatPriorSceneContext(scenes) {
-  if (scenes.length === 0) {
-    return "No prior scene context is available. Treat all reader-facing information in this scene as newly available to the reader.";
-  }
-
-  return scenes.map(scene => {
-    return `Scene: ${scene.name}
-Story order: ${
-  scene.storyOrder
-    ? `${scene.storyOrder.chapterOrder}.${scene.storyOrder.sceneOrder}`
-    : "unknown"
-}
-Characters: ${JSON.stringify(scene.characters)}
-Plot threads: ${JSON.stringify(scene.plotThreads)}
-Arcs: ${JSON.stringify(scene.arcs)}
-Text:
-${scene.content}`;
-  }).join("\n\n---\n\n");
-}
-
-function formatPriorChronologyContext(scenes) {
-  if (scenes.length === 0) {
-    return "No prior chronology context is available. Treat character-facing information in this scene as newly available only if the character can plausibly learn it in this scene.";
-  }
-
-  return scenes.map(scene => {
-    return `Scene: ${scene.name}
-Generated chronology sort: ${scene.chronologyOrder ?? "unknown"}
-Story order: ${
-  scene.storyOrder
-    ? `${scene.storyOrder.chapterOrder}.${scene.storyOrder.sceneOrder}`
-    : "unknown"
-}
-Characters: ${JSON.stringify(scene.characters)}
-Plot threads: ${JSON.stringify(scene.plotThreads)}
-Arcs: ${JSON.stringify(scene.arcs)}
-Text:
-${scene.content}`;
-  }).join("\n\n---\n\n");
 }
 
 function buildStandardMetricPrompt(
@@ -2295,15 +1964,20 @@ async function evaluateReaderAwareness(targetName) {
   return true;
 }
 
-let updatedEvaluation;
-
-if (isCharacterAwarenessMetric(metricName)) {
-  updatedEvaluation = await evaluateCharacterAwareness(targetName);
-} else if (isReaderAwarenessMetric(metricName)) {
-  updatedEvaluation = await evaluateReaderAwareness(targetName);
-} else {
-  updatedEvaluation = await evaluateStandardMetric(metricName, targetName);
-}
+const evaluatorRegistry = createEvaluatorRegistry({
+  normalizeName: toCamelCase,
+  specialized: {
+    characterAwareness: (_metricName, requestedTarget) =>
+      evaluateCharacterAwareness(requestedTarget),
+    readerAwareness: (_metricName, requestedTarget) =>
+      evaluateReaderAwareness(requestedTarget)
+  },
+  fallback: evaluateStandardMetric
+});
+const updatedEvaluation = await evaluatorRegistry.resolve(metricName)(
+  metricName,
+  targetName
+);
 
 if (updatedEvaluation) {
   const updated = matter.stringify(parsed.content, parsed.data);

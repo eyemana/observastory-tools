@@ -186,8 +186,11 @@
   },
 
   "truthLedger": {
-    // Folder keys to scan for authored anchors and inferred support.
-    // These names come from story.folders above, keeping the tutorial paths in one place.
+    // Folder keys to scan for authored anchors and inferred support. Within the
+    // Scenes folder, only type: scene notes are inferred, after fragment expansion.
+    // Fragments participate through their owning scenes; an explicit [!claim]
+    // in a fragment is indexed once as a deliberate author assertion.
+    // These names come from story.folders above, keeping tutorial paths in one place.
     "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "narrators", "scenes"],
 
     // Generated JSON index used by reports and awareness evaluator grounding.

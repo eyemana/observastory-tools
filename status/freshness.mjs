@@ -8,7 +8,6 @@ import { parseChronologyValue } from "../chronology/chronology-utils.mjs";
 import {
   defaultChronologyPaths,
   defaultScenesPath,
-  defaultTruthLedgerPaths,
   getSchedulerConfig,
   getStoryConfig,
   loadConfig
@@ -18,14 +17,20 @@ import {
   listEligibleSceneFiles
 } from "../evaluation-filters.mjs";
 import {
-  authorMarkdownFingerprint,
   chronologyInputHash
 } from "../fingerprints.mjs";
 import { toCamelCase } from "../vault-utils.mjs";
 import {
   listSceneFiles,
-  sceneCompositionFingerprint
+  sceneCompositionFingerprint,
+  sceneCompositionSnapshot
 } from "../scene-composition.mjs";
+import {
+  listTruthLedgerSources,
+  truthLedgerScanRoots,
+  truthLedgerSourceFingerprint
+} from "../truth/truth-sources.mjs";
+import { buildFragmentImpacts } from "./dependency-impact.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const statusRoot = path.dirname(__filename);
@@ -73,34 +78,6 @@ function writeJsonAtomic(filePath, value) {
 
 function readMarkdown(filePath) {
   return matter(fs.readFileSync(filePath, "utf8"));
-}
-
-function walkMarkdownFiles(root) {
-  if (!root || !fs.existsSync(root)) {
-    return [];
-  }
-
-  if (fs.statSync(root).isFile()) {
-    return root.endsWith(".md") ? [root] : [];
-  }
-
-  const files = [];
-
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) {
-      continue;
-    }
-
-    const entryPath = path.join(root, entry.name);
-
-    if (entry.isDirectory()) {
-      files.push(...walkMarkdownFiles(entryPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(entryPath);
-    }
-  }
-
-  return files.sort((a, b) => a.localeCompare(b));
 }
 
 function configuredPathFromToolRoot(toolRoot, configuredPath) {
@@ -367,10 +344,11 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
   const items = sceneFiles.map((filePath) => {
     const relativePath = path.relative(vaultRoot, filePath);
     const parsed = readMarkdown(filePath);
-    const fingerprint = sceneCompositionFingerprint(filePath, {
+    const composition = sceneCompositionSnapshot(filePath, {
       scenesRoot: scenesFolder,
       maxDepth: config.sceneComposition?.maxDepth
     });
+    const fingerprint = composition.fingerprint;
     const sceneStatus = sceneFingerprintStatus(filePath, fingerprint, fingerprintState);
     increment(fingerprintCounts, sceneStatus.status);
 
@@ -395,6 +373,9 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
       name: path.basename(filePath, ".md"),
       path: relativePath,
       absolutePath: path.resolve(filePath),
+      compositionDependencies: composition.dependencies.map(dependency =>
+        path.relative(vaultRoot, dependency)
+      ),
       fingerprintStatus: sceneStatus.status,
       fingerprintReason: sceneStatus.reason,
       fingerprintUpdatedAt: sceneStatus.updatedAt ?? null,
@@ -406,6 +387,7 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
       axes
     };
   });
+  const fragmentImpacts = buildFragmentImpacts(items);
 
   return {
     total: sceneFiles.length,
@@ -416,6 +398,7 @@ function buildSceneFreshness({ toolRoot, vaultRoot, config, schedulerConfig, tru
     fingerprintUpdatedAt: fingerprintState?.updatedAt ?? null,
     fingerprintCounts,
     axisCounts,
+    fragmentImpacts,
     staleSceneFiles: items
       .filter(item =>
         ["changed", "new"].includes(item.fingerprintStatus) ||
@@ -448,16 +431,16 @@ function sourceFingerprintsFromIndex(index) {
 function buildTruthLedgerFreshness({ toolRoot, vaultRoot, config }) {
   const outputPath = truthLedgerIndexPath(toolRoot, config);
   const index = readJsonFile(outputPath, null);
-  const scanRoots = defaultTruthLedgerPaths(config)
-    .map(scanPath => resolveFromRoot(vaultRoot, scanPath));
-  const files = [...new Set(scanRoots.flatMap(walkMarkdownFiles))].sort();
+  const scanRoots = truthLedgerScanRoots({ config, vaultRoot });
+  const sources = listTruthLedgerSources({ config, vaultRoot });
   const sourceFingerprints = sourceFingerprintsFromIndex(index);
   const counts = emptyCounts(["fresh", "stale", "never-run", "legacy", "deleted"]);
   const items = [];
 
-  for (const filePath of files) {
-    const relativePath = path.relative(vaultRoot, filePath);
-    const fingerprint = authorMarkdownFingerprint(filePath);
+  for (const source of sources) {
+    const filePath = source.path;
+    const relativePath = source.relativePath;
+    const fingerprint = truthLedgerSourceFingerprint(source, config);
     const recorded = sourceFingerprints.get(relativePath);
     let status = "fresh";
     let reason = "Source note fingerprint matches the Truth Ledger index.";
@@ -480,6 +463,7 @@ function buildTruthLedgerFreshness({ toolRoot, vaultRoot, config }) {
     items.push({
       path: relativePath,
       absolutePath: path.resolve(filePath),
+      kind: source.kind,
       status,
       reason,
       updatedAt: recorded?.updatedAt ?? null

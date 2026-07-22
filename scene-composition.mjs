@@ -367,14 +367,13 @@ export function resolveSceneText(scenePath, options = {}) {
   };
 }
 
-export function sceneCompositionFingerprint(scenePath, options = {}) {
+export function sceneCompositionSnapshot(scenePath, options = {}) {
   const raw = fs.readFileSync(scenePath, "utf8");
   const parsed = matter(raw);
   const frontmatter = { ...(parsed.data ?? {}) };
   delete frontmatter.ai;
   const resolved = resolveSceneText(scenePath, options);
-
-  return crypto
+  const fingerprint = crypto
     .createHash("sha256")
     .update(JSON.stringify({
       version: COMPOSITION_FINGERPRINT_VERSION,
@@ -383,4 +382,13 @@ export function sceneCompositionFingerprint(scenePath, options = {}) {
       maxDepth: resolved.maxDepth
     }))
     .digest("hex");
+
+  return {
+    ...resolved,
+    fingerprint
+  };
+}
+
+export function sceneCompositionFingerprint(scenePath, options = {}) {
+  return sceneCompositionSnapshot(scenePath, options).fingerprint;
 }

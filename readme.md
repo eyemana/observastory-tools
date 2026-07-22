@@ -142,6 +142,8 @@ The configured Scenes folder is recursive. A Markdown note within it is an indep
 
 Within scene prose, ordinary `[[links]]` remain unexpanded attention signals. A `![[fragment]]` embed is expanded transiently before current-scene evaluation, prior-scene context construction, link scanning, and freshness fingerprinting. Fragment frontmatter is discarded. A fragment may recursively embed another fragment, subject to `sceneComposition.maxDepth`; cycles, self-embeds, ambiguous or missing notes, and embeds of another official scene fail clearly.
 
+The generated Processing Status index records each official scene's composition dependencies. Its `Scene fragment dependencies` view shows every embedded fragment and the official scenes affected by editing it, highlighting fragments shared by more than one scene.
+
 Metadata `[[links]]` remain references. Metadata `![[embeds]]` are deliberately not expanded in this MVP because Obsidian properties do not natively render Markdown embeds.
 
 Scene lifecycle calibration is controlled by each scene's `status` frontmatter. Missing status defaults to `draft`.
@@ -551,7 +553,7 @@ Pacing, Conflict, Poetics, and Coherence are scene-only dimensions. They use the
 
 ## Truth Ledger
 
-The Truth Ledger is a generated support map. It scans configured notes, resolves `[[links]]` against known characters, plot threads, story engines, and arcs, and records concrete source evidence for authored and inferred story assertions.
+The Truth Ledger is a generated support map. It resolves `[[links]]` against known characters, plot threads, story engines, and arcs, and records concrete source evidence for authored and inferred story assertions. Configured story-element notes supply intended story-world support. Official scenes supply manuscript evidence from their fully expanded effective text.
 
 - **Authored anchors**: optional `[!claim]` callouts for facts you want to pin explicitly.
 - **Inferred support**: lower-authority claims inferred by the local LLM from scanned notes, with exact evidence excerpts and resolved entities where possible.
@@ -579,7 +581,11 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl scans configured folders one note at a time, using `scheduler.throttleMs` between notes. Each note pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Per-note generated partials are cached by author-content fingerprint, model, inference settings, and entity-catalog fingerprint, so unchanged notes reuse prior inferred output instead of being reinterpreted. The worker merges those results and writes the generated index to `observastory-tools/.index/truth-ledger.json`. The generated file is not meant to be hand-edited. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review authored anchors and inferred support in Obsidian.
+The scheduled crawl processes configured story-element notes and official scenes one source at a time, using `scheduler.throttleMs` between sources. An official scene is interpreted only after its `![[fragment]]` embeds have been expanded. Ordinary fragments and orphan fragments are not independently inferred as truth; their prose contributes through each official scene that embeds them. An explicit `[!claim]` inside a fragment remains a deliberate author assertion and is indexed once from that physical fragment.
+
+Each source pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Scene partials are cached by effective-content fingerprint, so editing a fragment invalidates every official scene that embeds it. The generated index records the owning source kind and scene dependencies without adding metadata to author notes. The worker merges those results and writes `observastory-tools/.index/truth-ledger.json`; do not edit that file by hand. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review the result in Obsidian.
+
+An official scene is authoritative about what the manuscript presents, not automatically about objective story-world truth. This distinction allows narration, dialogue, memories, dreams, and character beliefs to be mistaken while still serving as reader-visible or character-visible evidence.
 
 Awareness evaluators use the generated support map as grounding. reader awareness receives support from prior story-order scenes as reader-visible context. character awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
 
