@@ -234,6 +234,35 @@
     // Scene filters control which scenes are queued.
     "defaultProfile": "default",
 
+    // Generic observer-target contracts. Any configured entity type may be an
+    // observer or target, so relationship dimensions do not require new code.
+    "relationships": {
+      "readerAwareness": {
+        "metric": "reader awareness", "dimension": "awareness", "targets": ["*"],
+        "valueKind": "delta", "priorContext": "readerOrder", "targetGuidance": "readerAwareness",
+        "observer": { "mode": "constant", "key": "reader", "type": "reader", "name": "Reader", "storageKey": "reader" },
+        "meaning": "Measure how much new information the observer gains in this scene about each target.",
+        "knowledgeBoundary": "The reader can learn from narration, dramatic irony, framing, implication, reveals, and any point of view. Do not limit the reader to what a character knows."
+      },
+      "characterAwareness": {
+        "metric": "character awareness", "dimension": "awareness", "targets": ["plotThreads"],
+        "valueKind": "delta", "priorContext": "chronology",
+        "observer": { "mode": "entities", "key": "characters", "target": "character", "storageKey": "characters" },
+        "meaning": "Measure how much new information each observer gains in this scene about each target.",
+        "knowledgeBoundary": "Only score what each observer plausibly learns. Presence, access, chronology, and supplied evidence constrain knowledge."
+      }
+    },
+
+    // Optional change tracking for any entity type. Arc is only the tutorial's
+    // configured target; no stage vocabulary or transition shape is prescribed.
+    "trajectories": {
+      "trajectory": {
+        "metric": "trajectory", "dimension": "trajectory", "targets": ["arcs"],
+        "priorContext": "readerOrder",
+        "meaning": "Describe the state or transition made visible by this scene using the author's own definition. The definition may describe stages, a spectrum, a cycle, a reversal, or another form of change; do not impose a stage model that is not present."
+      }
+    },
+
     // These defaults include notes unless status or tags exclude them. Missing scene status is treated as draft.
     // Put tags: [no-evaluate] on a scene to keep it out of normal queue-all runs.
     // Include/exclude conflicts are configuration errors; neither side overrides the other.
@@ -343,12 +372,12 @@
 
     // Evaluations to run for each scene, in order.
     // Format: [metric, target].
-    // Metric names come from notes in the configured Metrics folder. Character Awareness and
-    // Reader Awareness use specialized relationship evaluators; other names use the generic evaluator.
+    // Metric names come from notes in the configured Metrics folder. Configured
+    // relationship and trajectory contracts select their generic evaluator families.
     // Target names come from story.entityTypes plus the built-in "scene" target.
     // "pacing", "conflict", "poetics", "coherence", and "scaffolding" use target "scene" and do not load external context.
-    // "character awareness" currently only supports target "plot thread".
-    // "reader awareness" supports configured entity types and can use per-type readerAwareness guidance.
+    // This tutorial configures character awareness for plot threads and reader awareness
+    // for several types; relationship contracts can select other observers and targets.
     "evaluations": [
       ["relevance", "character"],
       ["relevance", "plot thread"],
@@ -375,7 +404,8 @@
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
       ["reader awareness", "arc"],
-      ["reader awareness", "narrator"]
+      ["reader awareness", "narrator"],
+      ["trajectory", "arc"]
     ]
   }
 }

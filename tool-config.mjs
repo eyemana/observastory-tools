@@ -26,13 +26,26 @@ export const defaultConfig = {
         target: "character",
         folderKeys: ["characters"],
         label: "character",
-        pluralLabel: "characters"
+        pluralLabel: "characters",
+        readerAwareness: {
+          subject: "characters",
+          meaning: "Measure how much the scene increases, refreshes, or reinforces reader-facing awareness of each character through visible information, action, relationship, choice, reputation, or memorable detail.",
+          cautions: [
+            "Score what the reader receives, not whether the character is important.",
+            "An absent character may still receive a nonzero delta when the scene reveals information about them.",
+            "Frontmatter alone is not reader-visible evidence."
+          ]
+        }
       },
       plotThreads: {
         target: "plot thread",
         folderKeys: ["plotThreads"],
         label: "plot thread",
-        pluralLabel: "plot threads"
+        pluralLabel: "plot threads",
+        readerAwareness: {
+          meaning: "Measure how much new or meaningfully reinforced information the reader receives about each configured plot thread.",
+          cautions: ["Do not score plot importance or author-only intent."]
+        }
       },
       storyEngines: {
         target: "story engine",
@@ -44,7 +57,14 @@ export const defaultConfig = {
         target: "arc",
         folderKeys: ["arcs"],
         label: "arc",
-        pluralLabel: "arcs"
+        pluralLabel: "arcs",
+        readerAwareness: {
+          meaning: "Measure how much new evidence the reader receives about the configured change described by this definition.",
+          cautions: [
+            "Use the definition's own model of change; do not assume fixed stages, forward progress, improvement, or character-centered change.",
+            "Score evidence shown to the reader, not author intent that remains invisible."
+          ]
+        }
       },
       narrators: {
         target: "narrator",
@@ -187,6 +207,49 @@ export const defaultConfig = {
   },
   evaluation: {
     defaultProfile: "default",
+    relationships: {
+      readerAwareness: {
+        metric: "reader awareness",
+        dimension: "awareness",
+        targets: ["*"],
+        valueKind: "delta",
+        priorContext: "readerOrder",
+        targetGuidance: "readerAwareness",
+        observer: {
+          mode: "constant",
+          key: "reader",
+          type: "reader",
+          name: "Reader",
+          storageKey: "reader"
+        },
+        meaning: "Measure how much new information the observer gains in this scene about each target.",
+        knowledgeBoundary: "The reader can learn from narration, dramatic irony, framing, implication, reveals, and any point of view. Do not limit the reader to what a character knows."
+      },
+      characterAwareness: {
+        metric: "character awareness",
+        dimension: "awareness",
+        targets: ["plotThreads"],
+        valueKind: "delta",
+        priorContext: "chronology",
+        observer: {
+          mode: "entities",
+          key: "characters",
+          target: "character",
+          storageKey: "characters"
+        },
+        meaning: "Measure how much new information each observer gains in this scene about each target.",
+        knowledgeBoundary: "Only score what each observer plausibly learns. Presence, access, chronology, and supplied evidence constrain knowledge."
+      }
+    },
+    trajectories: {
+      trajectory: {
+        metric: "trajectory",
+        dimension: "trajectory",
+        targets: ["arcs"],
+        priorContext: "readerOrder",
+        meaning: "Describe the state or transition made visible by this scene using the author's own definition. The definition may describe stages, a spectrum, a cycle, a reversal, or another form of change; do not impose a stage model that is not present."
+      }
+    },
     elementFilters: {
       includeStatuses: [],
       excludeStatuses: ["scratch", "archived", "inactive"],
@@ -255,7 +318,8 @@ export const defaultConfig = {
       ["reader awareness", "character"],
       ["reader awareness", "plot thread"],
       ["reader awareness", "arc"],
-      ["reader awareness", "narrator"]
+      ["reader awareness", "narrator"],
+      ["trajectory", "arc"]
     ]
   }
 };

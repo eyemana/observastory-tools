@@ -41,8 +41,7 @@ function familyFixture(overrides = {}) {
     shouldSkipEvaluation: () => false,
     markEvaluationInput: (...args) => marks.push(args),
     writeStandardMetricObservations: (...args) => writes.push(args),
-    writeCharacterAwarenessObservations: (...args) => writes.push(args),
-    writeReaderAwarenessObservations: (...args) => writes.push(args)
+    writeTrajectoryObservations: (...args) => writes.push(args)
   };
   const families = createEvaluatorFamilies({
     sceneContent: "Mara waits at the harbor.",
@@ -92,10 +91,66 @@ test("standard evaluator handles an empty configured target set without a model 
   assert.equal(marks.length, 1);
 });
 
-test("character-awareness evaluator rejects unsupported targets before model work", async () => {
-  const { families } = familyFixture();
-  await assert.rejects(
-    families.evaluateCharacterAwareness("character"),
-    /only supports target "plot thread"/
-  );
+test("configured relationship evaluator handles arbitrary observer-target pairs", async () => {
+  const writes = [];
+  const configs = {
+    narrator: { key: "narrators", target: "narrator", label: "narrator", pluralLabel: "narrators" },
+    character: { key: "characters", target: "character", label: "character", pluralLabel: "characters" }
+  };
+  const { families } = familyFixture({
+    getTargetConfig: name => configs[name],
+    getTargetDefinitions: config => config.key === "narrators"
+      ? [{ name: "Hidden Voice", content: "An unseen narrator." }]
+      : [{ name: "Joe", content: "The protagonist." }],
+    relationshipContractFor: () => ({
+      key: "trust", metric: "Trust", dimension: "trust", valueKind: "score",
+      priorContext: "chronology",
+      observer: { mode: "entities", target: "character", key: "characters", storageKey: "characters" },
+      meaning: "Measure Joe's trust.", knowledgeBoundary: "Only Joe's available evidence."
+    }),
+    evaluationStore: {
+      evaluationInputHash: () => "hash", shouldSkipEvaluation: () => false,
+      markEvaluationInput: () => {},
+      writeRelationshipObservations: (...args) => writes.push(args),
+      writeStandardMetricObservations: () => {}, writeTrajectoryObservations: () => {}
+    },
+    requestModelJson: async () => ({ parsedResponse: {
+      narrators: { "Hidden Voice": { Joe: {
+        score: 7, salience: 6, confidence: 5, alignment: 1, evidenceStrength: 8,
+        rationale: "Joe accepts the account."
+      } } }
+    } })
+  });
+
+  assert.equal(await families.evaluateRelationship("Trust", "narrator"), true);
+  assert.equal(writes[0][2]["Hidden Voice"].Joe.score, 7);
+  assert.equal(writes[0][3][0].name, "Joe");
+});
+
+test("configured trajectory evaluator does not require an arc target or fixed stages", async () => {
+  const writes = [];
+  const motif = { key: "motifs", target: "motif", label: "motif", pluralLabel: "motifs" };
+  const { families } = familyFixture({
+    getTargetConfig: () => motif,
+    getTargetDefinitions: () => [{ name: "Weather", content: "Cycles between shelter and exposure." }],
+    trajectoryContractFor: () => ({
+      key: "change", metric: "Change", dimension: "change", priorContext: "readerOrder",
+      meaning: "Use the motif's cyclical model."
+    }),
+    evaluationStore: {
+      evaluationInputHash: () => "hash", shouldSkipEvaluation: () => false,
+      markEvaluationInput: () => {}, writeRelationshipObservations: () => {},
+      writeStandardMetricObservations: () => {},
+      writeTrajectoryObservations: (...args) => writes.push(args)
+    },
+    requestModelJson: async () => ({ parsedResponse: {
+      motifs: { Weather: {
+        stateBefore: "Shelter", stateAfter: "Exposure", transition: "The storm opens",
+        movement: 6, clarity: 7, confidence: 8, evidenceStrength: 7, rationale: "Weather changes."
+      } }
+    } })
+  });
+
+  assert.equal(await families.evaluateTrajectory("Change", "motif"), true);
+  assert.equal(writes[0][2].Weather.stateAfter, "Exposure");
 });

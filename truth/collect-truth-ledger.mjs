@@ -20,6 +20,10 @@ import {
   truthLedgerSourceFingerprint,
   truthLedgerSourceMetadata
 } from "./truth-sources.mjs";
+import {
+  attachComposedEvidenceProvenance,
+  consolidateClaims
+} from "./claim-index.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -574,7 +578,7 @@ function attachSourceContext(claim, source, vaultRoot) {
     sourceKind: metadata.kind,
     dependencies: metadata.dependencies
   }));
-  return claim;
+  return attachComposedEvidenceProvenance(claim, source, vaultRoot);
 }
 
 async function fetchJsonFromOllama(prompt) {
@@ -886,6 +890,7 @@ async function main() {
     fingerprint: fingerprints.get(source.path),
     updatedAt: generatedAt
   }));
+  const claimGroups = consolidateClaims(claims, inferredClaims);
   const index = {
     generatedAt,
     vaultRoot,
@@ -895,8 +900,10 @@ async function main() {
     entities: entityCatalog.entries,
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
+    consolidatedClaimCount: claimGroups.length,
     claims,
     inferredClaims,
+    claimGroups,
     warnings,
     errors
   };

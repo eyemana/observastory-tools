@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import path from "path";
 
-export const EVALUATION_INPUT_HASH_VERSION = 2;
+export const EVALUATION_INPUT_HASH_VERSION = 3;
 
 export function createEvaluationStore({
   parsed,
@@ -34,7 +34,7 @@ export function createEvaluationStore({
       .digest("hex");
   }
 
-  function hasExistingEvaluation(metricKey, targetKey) {
+  function hasExistingEvaluation(metricKey, targetKey, options = {}) {
     const observations = parsed.data.ai?.observations;
     if (!observations || typeof observations !== "object") return false;
 
@@ -43,22 +43,29 @@ export function createEvaluationStore({
       return Boolean(observations.scene?.[sceneName]?.[metricKey]);
     }
 
-    if (metricKey === "readerAwareness") {
-      return Object.values(observations[targetKey] ?? {})
-        .some(entry => Boolean(entry?.awareness?.reader));
+    if (options.relationship) {
+      const dimension = options.dimension ?? metricKey;
+      const storageKey = options.storageKey ?? "observer";
+      return Object.values(observations[targetKey] ?? {}).some(entry => {
+        const relationship = entry?.[dimension]?.[storageKey];
+        return options.observerMode === "entities"
+          ? relationship && Object.keys(relationship).length > 0
+          : Boolean(relationship);
+      });
     }
 
-    if (metricKey === "characterAwareness") {
+    if (options.trajectory) {
+      const dimension = options.dimension ?? metricKey;
       return Object.values(observations[targetKey] ?? {})
-        .some(entry => Object.keys(entry?.awareness?.characters ?? {}).length > 0);
+        .some(entry => Boolean(entry?.[dimension]));
     }
 
     return Object.values(observations[targetKey] ?? {})
       .some(entry => Boolean(entry?.[metricKey]));
   }
 
-  function shouldSkipEvaluation(metricKey, targetKey, inputHash) {
-    if (!cacheEnabled || forceEvaluation || !hasExistingEvaluation(metricKey, targetKey)) {
+  function shouldSkipEvaluation(metricKey, targetKey, inputHash, options = {}) {
+    if (!cacheEnabled || forceEvaluation || !hasExistingEvaluation(metricKey, targetKey, options)) {
       return false;
     }
 
@@ -157,76 +164,113 @@ export function createEvaluationStore({
     }
   }
 
-  function awarenessObservationPayload(metricName, entry, targetConfig, entityName, observer = null) {
+  function relationshipObservationPayload(contract, entry, targetConfig, entityName, observer) {
+    const valueKind = contract.valueKind ?? "delta";
+    const value = entry[valueKind] ?? 0;
     const payload = {
       entity: { name: entityName, type: targetConfig.entityType, target: targetConfig.label },
-      dimension: "awareness",
-      metric: metricName,
-      valueKind: "delta",
-      value: entry.delta,
+      dimension: dimensionKey(contract.dimension ?? contract.key),
+      metric: contract.metric,
+      valueKind,
+      value,
       values: {
-        delta: entry.delta,
+        [valueKind]: value,
         salience: entry.salience,
         confidence: entry.confidence,
         alignment: entry.alignment,
         evidenceStrength: entry.evidenceStrength
       },
       scale: { min: 0, max: 10 },
+      fieldScales: {
+        [valueKind]: { min: 0, max: 10 },
+        salience: { min: 0, max: 10 },
+        confidence: { min: 0, max: 10 },
+        alignment: { min: -10, max: 10 },
+        evidenceStrength: { min: 0, max: 10 }
+      },
+      observer,
       lifecycleStatus,
       calibrationMode,
       profile: profileName,
       model,
       updated: now()
     };
-
-    if (observer) payload.observer = observer;
     if (entry.calibration) payload.calibration = entry.calibration;
-    if (awarenessRationaleMode === "paraphrase") {
-      payload.rationale = entry.rationale ?? "";
-    } else if (awarenessRationaleMode === "extractive") {
-      payload.evidence = entry.evidence ?? [];
-    }
+    if (awarenessRationaleMode === "paraphrase") payload.rationale = entry.rationale ?? "";
+    if (awarenessRationaleMode === "extractive") payload.evidence = entry.evidence ?? [];
     return payload;
   }
 
-  function writeReaderAwarenessObservations(targetConfig, scores) {
+  function writeRelationshipObservations(contract, targetConfig, scores, observers) {
     parsed.data.ai.observations = parsed.data.ai.observations ?? {};
     const target = parsed.data.ai.observations[targetConfig.key] =
       parsed.data.ai.observations[targetConfig.key] ?? {};
+    const dimension = dimensionKey(contract.dimension ?? contract.key);
+    const storageKey = contract.observer.storageKey ?? contract.observer.key ?? "observer";
 
-    for (const [entityName, entry] of Object.entries(scores ?? {})) {
+    for (const [entityName, observerScores] of Object.entries(scores ?? {})) {
       target[entityName] = target[entityName] ?? {};
-      target[entityName].awareness = target[entityName].awareness ?? {};
-      target[entityName].awareness.reader = awarenessObservationPayload(
-        "reader awareness",
-        entry,
-        targetConfig,
-        entityName,
-        { type: "reader", name: "Reader" }
-      );
+      target[entityName][dimension] = target[entityName][dimension] ?? {};
+      const bucket = target[entityName][dimension];
+
+      if (contract.observer.mode === "entities") {
+        bucket[storageKey] = bucket[storageKey] ?? {};
+        for (const [observerName, entry] of Object.entries(observerScores ?? {})) {
+          const observer = observers.find(item => item.name === observerName) ?? {
+            type: contract.observer.key,
+            name: observerName
+          };
+          bucket[storageKey][observerName] = relationshipObservationPayload(
+            contract, entry, targetConfig, entityName, observer
+          );
+        }
+      } else {
+        const observer = observers[0] ?? {
+          type: contract.observer.type ?? contract.observer.key,
+          name: contract.observer.name
+        };
+        const entry = observerScores?.[observer.name] ?? Object.values(observerScores ?? {})[0] ?? {};
+        bucket[storageKey] = relationshipObservationPayload(
+          contract, entry, targetConfig, entityName, observer
+        );
+      }
     }
   }
 
-  function writeCharacterAwarenessObservations(plotThreadConfig, scores) {
+  function writeTrajectoryObservations(contract, targetConfig, scores) {
     parsed.data.ai.observations = parsed.data.ai.observations ?? {};
-    const target = parsed.data.ai.observations[plotThreadConfig.key] =
-      parsed.data.ai.observations[plotThreadConfig.key] ?? {};
+    const target = parsed.data.ai.observations[targetConfig.key] =
+      parsed.data.ai.observations[targetConfig.key] ?? {};
+    const dimension = dimensionKey(contract.dimension ?? contract.key);
 
-    for (const [plotThreadName, characterScores] of Object.entries(scores ?? {})) {
-      target[plotThreadName] = target[plotThreadName] ?? {};
-      target[plotThreadName].awareness = target[plotThreadName].awareness ?? {};
-      const characters = target[plotThreadName].awareness.characters =
-        target[plotThreadName].awareness.characters ?? {};
-
-      for (const [characterName, entry] of Object.entries(characterScores ?? {})) {
-        characters[characterName] = awarenessObservationPayload(
-          "character awareness",
-          entry,
-          plotThreadConfig,
-          plotThreadName,
-          { type: "characters", name: characterName }
-        );
-      }
+    for (const [entityName, entry] of Object.entries(scores ?? {})) {
+      target[entityName] = target[entityName] ?? {};
+      const payload = {
+        entity: { name: entityName, type: targetConfig.entityType, target: targetConfig.label },
+        dimension,
+        metric: contract.metric,
+        valueKind: "movement",
+        value: entry.movement,
+        values: {
+          movement: entry.movement,
+          clarity: entry.clarity,
+          confidence: entry.confidence,
+          evidenceStrength: entry.evidenceStrength
+        },
+        stateBefore: entry.stateBefore,
+        stateAfter: entry.stateAfter,
+        transition: entry.transition,
+        scale: { min: 0, max: 10 },
+        lifecycleStatus,
+        calibrationMode,
+        profile: profileName,
+        model,
+        updated: now()
+      };
+      if (entry.calibration) payload.calibration = entry.calibration;
+      if (awarenessRationaleMode === "paraphrase") payload.rationale = entry.rationale ?? "";
+      if (awarenessRationaleMode === "extractive") payload.evidence = entry.evidence ?? [];
+      target[entityName][dimension] = payload;
     }
   }
 
@@ -234,8 +278,8 @@ export function createEvaluationStore({
     evaluationInputHash,
     markEvaluationInput,
     shouldSkipEvaluation,
-    writeCharacterAwarenessObservations,
-    writeReaderAwarenessObservations,
-    writeStandardMetricObservations
+    writeRelationshipObservations,
+    writeStandardMetricObservations,
+    writeTrajectoryObservations
   };
 }

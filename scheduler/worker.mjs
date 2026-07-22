@@ -29,6 +29,7 @@ import {
   truthLedgerSourceFingerprint,
   truthLedgerSourceMetadata
 } from "../truth/truth-sources.mjs";
+import { consolidateClaims } from "../truth/claim-index.mjs";
 import {
   claimJob,
   clearWorkerStop,
@@ -51,7 +52,7 @@ const toolRoot = path.join(schedulerRoot, "..");
 const evaluatorPath = path.join(toolRoot, "evaluators", "evaluate-scene.mjs");
 const truthCollectorPath = path.join(toolRoot, "truth", "collect-truth-ledger.mjs");
 const chronologyIndexerPath = path.join(toolRoot, "chronology", "index-scene.mjs");
-const TRUTH_LEDGER_PARTIAL_CACHE_VERSION = 1;
+const TRUTH_LEDGER_PARTIAL_CACHE_VERSION = 2;
 
 class JobCanceledError extends Error {
   constructor(message = "Job canceled.") {
@@ -1041,6 +1042,9 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     fingerprint: fileFingerprints.get(source.path),
     updatedAt: generatedAt
   }));
+  const sortedClaims = claims.sort(sortClaims);
+  const sortedInferredClaims = inferredClaims.sort(sortClaims);
+  const claimGroups = consolidateClaims(sortedClaims, sortedInferredClaims);
   const index = {
     generatedAt,
     vaultRoot,
@@ -1053,8 +1057,10 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     ),
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
-    claims: claims.sort(sortClaims),
-    inferredClaims: inferredClaims.sort(sortClaims),
+    consolidatedClaimCount: claimGroups.length,
+    claims: sortedClaims,
+    inferredClaims: sortedInferredClaims,
+    claimGroups,
     warnings: [...new Set(warnings)].sort(),
     errors
   };
@@ -1084,6 +1090,7 @@ async function processTruthLedgerJob(jobPath, job, schedulerConfig, paths) {
     outputPath,
     claimCount: claims.length,
     inferredClaimCount: inferredClaims.length,
+    consolidatedClaimCount: claimGroups.length,
     cachedNoteCount: cached,
     cachePath,
     warnings: index.warnings,

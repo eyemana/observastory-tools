@@ -1,7 +1,7 @@
 import {
-  buildCharacterAwarenessPrompt,
-  buildReaderAwarenessPrompt,
+  buildRelationshipPrompt,
   buildStandardMetricPrompt,
+  buildTrajectoryPrompt,
   readerAwarenessGuidance
 } from "./prompt-builders.mjs";
 
@@ -27,32 +27,34 @@ export function createEvaluatorFamilies({
   evaluationStore,
   requestModelJson,
   dimensionKey,
-  logSkippedEvaluation
+  logSkippedEvaluation,
+  relationshipContractFor,
+  trajectoryContractFor
 }) {
   const {
-    applyCalibrationToCharacterAwarenessMap,
-    applyCalibrationToReaderAwarenessMap,
+    applyCalibrationToRelationshipMap,
     applyCalibrationToStandardScores,
-    awarenessEntryJsonShape,
-    awarenessJsonShape,
+    applyCalibrationToTrajectoryMap,
     awarenessRationaleInstructions,
     awarenessSourceText,
     calibrationPromptGuidance,
-    normalizeCharacterAwarenessMap,
-    normalizeReaderAwarenessMap,
+    normalizeRelationshipMap,
     normalizeSceneOnlyScore,
     normalizeSubjectRelationshipScoreMap,
+    normalizeTrajectoryMap,
+    relationshipEntryJsonShape,
     standardMetricRationaleInstructions,
     standardMetricRationaleJsonShape,
-    standardMetricSourceText
+    standardMetricSourceText,
+    trajectoryEntryJsonShape
   } = responsePolicy;
   const {
     evaluationInputHash,
     markEvaluationInput,
     shouldSkipEvaluation,
-    writeCharacterAwarenessObservations,
-    writeReaderAwarenessObservations,
-    writeStandardMetricObservations
+    writeRelationshipObservations,
+    writeStandardMetricObservations,
+    writeTrajectoryObservations
   } = evaluationStore;
 
   async function evaluateStandardMetric(metricName, targetName) {
@@ -140,170 +142,175 @@ export function createEvaluatorFamilies({
     return true;
   }
 
-  async function evaluateCharacterAwareness(targetName) {
-    const requestedTargetConfig = getTargetConfig(targetName);
-    if (requestedTargetConfig.key !== "plotThreads") {
-      throw new Error(
-        `character awareness only supports target "plot thread". Received "${targetName}".`
-      );
-    }
-
-    const characterConfig = getTargetConfig("character");
-    const plotThreadConfig = getTargetConfig("plot thread");
-    const canonicalTargetName = plotThreadConfig.target;
-    const characterDefinitionEntries = getTargetDefinitions(characterConfig);
-    const plotThreadDefinitionEntries = getTargetDefinitions(plotThreadConfig);
-    const characterNames = characterDefinitionEntries.map(definition => definition.name);
-    const plotThreadNames = plotThreadDefinitionEntries.map(definition => definition.name);
-    const characterDefinitions = formatDefinitions(characterDefinitionEntries);
-    const plotThreadDefinitions = formatDefinitions(plotThreadDefinitionEntries);
-    const priorChronologyScenes = listPriorChronologyScenes();
-    const priorChronologyContext = formatPriorChronologyContext(priorChronologyScenes);
-    const truthLedgerSupport = formatTruthLedgerSupport(
-      plotThreadConfig,
-      plotThreadNames,
-      priorChronologyScenes,
-      "Prior chronology support before this scene"
-    );
-    const prompt = buildCharacterAwarenessPrompt({
-      characterNames,
-      plotThreadNames,
-      characterDefinitions,
-      plotThreadDefinitions,
-      priorChronologyContext,
-      truthLedgerSupport,
-      linkedCharactersText: formatLinkedTargetEntries(
-        linkedTargetEntries(sceneContent, characterNames)
-      ),
-      linkedPlotThreadsText: formatLinkedTargetEntries(
-        linkedTargetEntries(sceneContent, plotThreadNames)
-      ),
-      calibrationGuidance: calibrationPromptGuidance("character awareness"),
-      rationaleInstructions: awarenessRationaleInstructions(),
-      awarenessEntryShape: awarenessEntryJsonShape(),
-      sceneContent
-    });
-    const inputHash = evaluationInputHash(
-      "character awareness",
-      canonicalTargetName,
-      prompt
-    );
-
-    if (shouldSkipEvaluation("characterAwareness", "plotThreads", inputHash)) {
-      logSkippedEvaluation("character awareness", canonicalTargetName);
-      return false;
-    }
-
-    let plotThreads;
-    if (characterNames.length === 0 || plotThreadNames.length === 0) {
-      plotThreads = normalizeCharacterAwarenessMap(
-        {},
-        plotThreadNames,
-        characterNames,
-        awarenessSourceText({ scene: sceneContent })
-      );
-    } else {
-      const { parsedResponse: scores } = await requestModelJson(prompt);
-      plotThreads = normalizeCharacterAwarenessMap(
-        scores.plotThreads,
-        plotThreadNames,
-        characterNames,
-        awarenessSourceText({
-          scene: sceneContent,
-          definitions: [characterDefinitions, plotThreadDefinitions].join("\n\n"),
-          priorScenes: `${priorChronologyContext}\n\n${truthLedgerSupport}`
-        })
-      );
-    }
-
-    plotThreads = applyCalibrationToCharacterAwarenessMap(
-      plotThreads,
-      "character awareness"
-    );
-    writeCharacterAwarenessObservations(plotThreadConfig, plotThreads);
-    markEvaluationInput(
-      "characterAwareness",
-      "plotThreads",
-      inputHash,
-      "character awareness",
-      canonicalTargetName
-    );
-    return true;
-  }
-
-  async function evaluateReaderAwareness(targetName) {
+  async function evaluateRelationship(metricName, targetName) {
     const targetConfig = getTargetConfig(targetName);
+    const configured = relationshipContractFor(metricName, targetConfig);
+    if (!configured) {
+      throw new Error(`No relationship contract permits "${metricName}" for target "${targetName}".`);
+    }
+
+    let contract = configured;
+    if (contract.targetGuidance === "readerAwareness") {
+      const guidance = readerAwarenessGuidance(targetConfig);
+      contract = {
+        ...contract,
+        meaning: guidance.meaning,
+        knowledgeBoundary: [contract.knowledgeBoundary, ...guidance.cautions]
+          .filter(Boolean)
+          .join("\n")
+      };
+    }
+
     const targetDefinitionEntries = getTargetDefinitions(targetConfig);
     const targetNames = targetDefinitionEntries.map(definition => definition.name);
     const targetDefinitions = formatDefinitions(targetDefinitionEntries);
-    const priorScenes = listPriorScenes();
-    const priorSceneContext = formatPriorSceneContext(priorScenes);
+    let observerDefinitionEntries = [];
+    let observers;
+
+    if (contract.observer.mode === "entities") {
+      const observerConfig = getTargetConfig(
+        contract.observer.target ?? contract.observer.entityType ?? contract.observer.key
+      );
+      observerDefinitionEntries = getTargetDefinitions(observerConfig);
+      observers = observerDefinitionEntries.map(definition => ({
+        type: observerConfig.key,
+        name: definition.name
+      }));
+    } else {
+      observers = [{
+        type: contract.observer.type ?? contract.observer.key,
+        name: contract.observer.name
+      }];
+    }
+
+    const observerNames = observers.map(observer => observer.name);
+    const priorScenes = contract.priorContext === "chronology"
+      ? listPriorChronologyScenes()
+      : listPriorScenes();
+    const priorContext = contract.priorContext === "chronology"
+      ? formatPriorChronologyContext(priorScenes)
+      : formatPriorSceneContext(priorScenes);
     const truthLedgerSupport = formatTruthLedgerSupport(
       targetConfig,
       targetNames,
       priorScenes,
-      "Reader-visible support before this scene"
+      contract.priorContext === "chronology"
+        ? "Prior chronology support before this scene"
+        : "Reader-visible support before this scene"
     );
-    const prompt = buildReaderAwarenessPrompt({
+    const prompt = buildRelationshipPrompt({
+      contract,
       targetConfig,
       targetNames,
       targetDefinitions,
-      priorSceneContext,
+      observerNames,
+      observerDefinitions: formatDefinitions(observerDefinitionEntries),
+      priorContext,
       truthLedgerSupport,
-      linkedTargetsText: formatLinkedTargetEntries(
-        linkedTargetEntries(sceneContent, targetNames)
-      ),
-      guidance: readerAwarenessGuidance(targetConfig),
-      calibrationGuidance: calibrationPromptGuidance("reader awareness"),
+      linkedTargetsText: formatLinkedTargetEntries(linkedTargetEntries(sceneContent, targetNames)),
+      linkedObserversText: formatLinkedTargetEntries(linkedTargetEntries(sceneContent, observerNames)),
+      calibrationGuidance: calibrationPromptGuidance(metricName),
       rationaleInstructions: awarenessRationaleInstructions(),
-      awarenessShape: awarenessJsonShape(targetConfig),
+      relationshipEntryShape: relationshipEntryJsonShape(contract.valueKind),
       sceneContent
     });
-    const inputHash = evaluationInputHash("reader awareness", targetConfig.target, prompt);
+    const metricKey = dimensionKey(metricName);
+    const inputHash = evaluationInputHash(metricName, targetConfig.target, prompt);
+    const storageKey = contract.observer.storageKey ?? contract.observer.key ?? "observer";
 
-    if (shouldSkipEvaluation("readerAwareness", targetConfig.key, inputHash)) {
-      logSkippedEvaluation("reader awareness", targetConfig.target);
+    if (shouldSkipEvaluation(metricKey, targetConfig.key, inputHash, {
+      relationship: true,
+      dimension: dimensionKey(contract.dimension),
+      storageKey,
+      observerMode: contract.observer.mode
+    })) {
+      logSkippedEvaluation(metricName, targetConfig.target);
       return false;
     }
 
-    let targetScores;
-    if (targetNames.length === 0) {
-      targetScores = normalizeReaderAwarenessMap(
-        {},
-        targetNames,
-        awarenessSourceText({ scene: sceneContent })
-      );
-    } else {
-      const { parsedResponse: scores } = await requestModelJson(prompt);
-      targetScores = normalizeReaderAwarenessMap(
-        scores[targetConfig.key],
-        targetNames,
-        awarenessSourceText({
-          scene: sceneContent,
-          definitions: targetDefinitions,
-          priorScenes: `${priorSceneContext}\n\n${truthLedgerSupport}`
-        })
-      );
+    let scores = {};
+    if (targetNames.length > 0 && observerNames.length > 0) {
+      const { parsedResponse } = await requestModelJson(prompt);
+      scores = parsedResponse[targetConfig.key];
     }
+    const sourceText = awarenessSourceText({
+      scene: sceneContent,
+      definitions: `${targetDefinitions}\n\n${formatDefinitions(observerDefinitionEntries)}`,
+      priorScenes: `${priorContext}\n\n${truthLedgerSupport}`
+    });
+    let normalized = normalizeRelationshipMap(
+      scores, targetNames, observerNames, contract, sourceText
+    );
+    normalized = applyCalibrationToRelationshipMap(normalized, metricName);
+    writeRelationshipObservations(contract, targetConfig, normalized, observers);
+    markEvaluationInput(metricKey, targetConfig.key, inputHash, metricName, targetConfig.target);
+    return true;
+  }
 
-    targetScores = applyCalibrationToReaderAwarenessMap(
-      targetScores,
-      "reader awareness"
+  async function evaluateTrajectory(metricName, targetName) {
+    const targetConfig = getTargetConfig(targetName);
+    const contract = trajectoryContractFor(metricName, targetConfig);
+    if (!contract) {
+      throw new Error(`No trajectory contract permits "${metricName}" for target "${targetName}".`);
+    }
+    const definitions = getTargetDefinitions(targetConfig);
+    const targetNames = definitions.map(definition => definition.name);
+    const targetDefinitions = formatDefinitions(definitions);
+    const priorScenes = contract.priorContext === "chronology"
+      ? listPriorChronologyScenes()
+      : listPriorScenes();
+    const priorContext = contract.priorContext === "chronology"
+      ? formatPriorChronologyContext(priorScenes)
+      : formatPriorSceneContext(priorScenes);
+    const truthLedgerSupport = formatTruthLedgerSupport(
+      targetConfig,
+      targetNames,
+      priorScenes,
+      "Previously visible trajectory support"
     );
-    writeReaderAwarenessObservations(targetConfig, targetScores);
-    markEvaluationInput(
-      "readerAwareness",
-      targetConfig.key,
-      inputHash,
-      "reader awareness",
-      targetConfig.target
-    );
+    const prompt = buildTrajectoryPrompt({
+      contract,
+      targetConfig,
+      targetNames,
+      targetDefinitions,
+      priorContext,
+      truthLedgerSupport,
+      linkedTargetsText: formatLinkedTargetEntries(linkedTargetEntries(sceneContent, targetNames)),
+      calibrationGuidance: calibrationPromptGuidance(metricName),
+      rationaleInstructions: awarenessRationaleInstructions(),
+      trajectoryEntryShape: trajectoryEntryJsonShape(),
+      sceneContent
+    });
+    const metricKey = dimensionKey(metricName);
+    const dimension = dimensionKey(contract.dimension);
+    const inputHash = evaluationInputHash(metricName, targetConfig.target, prompt);
+    if (shouldSkipEvaluation(metricKey, targetConfig.key, inputHash, {
+      trajectory: true,
+      dimension
+    })) {
+      logSkippedEvaluation(metricName, targetConfig.target);
+      return false;
+    }
+    let scores = {};
+    if (targetNames.length > 0) {
+      const { parsedResponse } = await requestModelJson(prompt);
+      scores = parsedResponse[targetConfig.key];
+    }
+    const sourceText = awarenessSourceText({
+      scene: sceneContent,
+      definitions: targetDefinitions,
+      priorScenes: `${priorContext}\n\n${truthLedgerSupport}`
+    });
+    let normalized = normalizeTrajectoryMap(scores, targetNames, sourceText);
+    normalized = applyCalibrationToTrajectoryMap(normalized, metricName);
+    writeTrajectoryObservations(contract, targetConfig, normalized);
+    markEvaluationInput(metricKey, targetConfig.key, inputHash, metricName, targetConfig.target);
     return true;
   }
 
   return {
-    evaluateCharacterAwareness,
-    evaluateReaderAwareness,
-    evaluateStandardMetric
+    evaluateRelationship,
+    evaluateStandardMetric,
+    evaluateTrajectory
   };
 }

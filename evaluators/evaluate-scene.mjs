@@ -7,6 +7,12 @@ import { createEvaluatorRegistry } from "./evaluator-registry.mjs";
 import { createResponsePolicy } from "./response-policy.mjs";
 import { createEvaluationStore } from "./evaluation-store.mjs";
 import { createEvaluatorFamilies } from "./evaluator-families.mjs";
+import {
+  relationshipContractFor,
+  relationshipContracts,
+  trajectoryContractFor,
+  trajectoryContracts
+} from "./evaluation-contracts.mjs";
 
 import { fileURLToPath } from "url";
 import {
@@ -178,7 +184,8 @@ function buildTargetConfigs() {
       paths: storyEntityTypePaths(config, key),
       label: entityType.label ?? target,
       pluralLabel: entityType.pluralLabel ?? key,
-      readerAwareness: entityType.readerAwareness
+      readerAwareness: entityType.readerAwareness,
+      definitionConfig: entityType
     };
   }
 
@@ -585,16 +592,32 @@ const evaluatorFamilies = createEvaluatorFamilies({
   evaluationStore,
   requestModelJson: fetchJsonFromOllama,
   dimensionKey: toCamelCase,
-  logSkippedEvaluation
+  logSkippedEvaluation,
+  relationshipContractFor: (requestedMetric, targetConfig) =>
+    relationshipContractFor(config, requestedMetric, targetConfig),
+  trajectoryContractFor: (requestedMetric, targetConfig) =>
+    trajectoryContractFor(config, requestedMetric, targetConfig)
 });
+const specializedEvaluators = {};
+const contractedMetricNames = new Set([
+  ...relationshipContracts(config).map(contract => contract.metric),
+  ...trajectoryContracts(config).map(contract => contract.metric)
+]);
+for (const contractedMetricName of contractedMetricNames) {
+  specializedEvaluators[toCamelCase(contractedMetricName)] = (requestedMetric, requestedTarget) => {
+    const requestedTargetConfig = getTargetConfig(requestedTarget);
+    if (relationshipContractFor(config, requestedMetric, requestedTargetConfig)) {
+      return evaluatorFamilies.evaluateRelationship(requestedMetric, requestedTarget);
+    }
+    if (trajectoryContractFor(config, requestedMetric, requestedTargetConfig)) {
+      return evaluatorFamilies.evaluateTrajectory(requestedMetric, requestedTarget);
+    }
+    return evaluatorFamilies.evaluateStandardMetric(requestedMetric, requestedTarget);
+  };
+}
 const evaluatorRegistry = createEvaluatorRegistry({
   normalizeName: toCamelCase,
-  specialized: {
-    characterAwareness: (_metricName, requestedTarget) =>
-      evaluatorFamilies.evaluateCharacterAwareness(requestedTarget),
-    readerAwareness: (_metricName, requestedTarget) =>
-      evaluatorFamilies.evaluateReaderAwareness(requestedTarget)
-  },
+  specialized: specializedEvaluators,
   fallback: evaluatorFamilies.evaluateStandardMetric
 });
 const updatedEvaluation = await evaluatorRegistry.resolve(metricName)(

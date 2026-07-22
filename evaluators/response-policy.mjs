@@ -162,16 +162,15 @@ Use the JSON field "${settings.rationaleField}" for that rationale.`;
     return normalized;
   }
 
-  function awarenessEntryJsonShape() {
+  function relationshipEntryJsonShape(valueKind = "delta") {
     const rationaleShape = awarenessRationaleMode === "paraphrase"
-      ? `,\n      "rationale": "string"`
+      ? `,\n  "rationale": "string"`
       : "";
     const evidenceShape = awarenessRationaleMode === "extractive"
-      ? `,\n      "evidence": ["exact excerpt"]`
+      ? `,\n  "evidence": ["exact excerpt"]`
       : "";
-
     return `{
-  "delta": number,
+  "${valueKind}": number,
   "salience": number,
   "confidence": number,
   "alignment": number,
@@ -179,40 +178,83 @@ Use the JSON field "${settings.rationaleField}" for that rationale.`;
 }`;
   }
 
-  function awarenessJsonShape(targetConfig) {
+  function trajectoryEntryJsonShape() {
+    const rationaleShape = awarenessRationaleMode === "paraphrase"
+      ? `,\n  "rationale": "string"`
+      : "";
+    const evidenceShape = awarenessRationaleMode === "extractive"
+      ? `,\n  "evidence": ["exact excerpt"]`
+      : "";
     return `{
-  "${targetConfig.key}": {
-    "${targetConfig.label}Name": ${awarenessEntryJsonShape()}
-  }
+  "stateBefore": "short state label or empty string",
+  "stateAfter": "short state label or empty string",
+  "transition": "short description or empty string",
+  "movement": number,
+  "clarity": number,
+  "confidence": number,
+  "evidenceStrength": number${rationaleShape}${evidenceShape}
 }`;
   }
 
-  function normalizeAwarenessEntry(rawValue, sourceText) {
+  function normalizeRelationshipEntry(rawValue, valueKind, sourceText) {
     const rawObject = typeof rawValue === "number"
-      ? { delta: rawValue }
+      ? { [valueKind]: rawValue }
       : rawValue && typeof rawValue === "object"
         ? rawValue
         : {};
+    const primary = rawObject[valueKind] ?? rawObject.delta ?? rawObject.score;
     const normalized = {
-      delta: clampNumber(rawObject.delta, 0, 10),
+      [valueKind]: clampNumber(primary, 0, 10),
       salience: clampNumber(rawObject.salience, 0, 10),
       confidence: clampNumber(rawObject.confidence, 0, 10),
       alignment: clampNumber(rawObject.alignment, -10, 10),
       evidenceStrength: clampNumber(rawObject.evidenceStrength, 0, 10)
     };
-
     if (awarenessRationaleMode === "paraphrase") {
-      normalized.rationale = typeof rawObject.rationale === "string"
-        ? rawObject.rationale
-        : "";
+      normalized.rationale = typeof rawObject.rationale === "string" ? rawObject.rationale : "";
     } else if (awarenessRationaleMode === "extractive") {
-      normalized.evidence = normalizeEvidence(
-        rawObject.evidence ?? rawObject.excerpts,
-        sourceText
-      );
+      normalized.evidence = normalizeEvidence(rawObject.evidence ?? rawObject.excerpts, sourceText);
     }
-
     return normalized;
+  }
+
+  function normalizeRelationshipMap(scores, targetNames, observerNames, contract, sourceText) {
+    const source = scores && typeof scores === "object" ? scores : {};
+    const valueKind = contract.valueKind ?? "delta";
+    return Object.fromEntries(targetNames.map(targetName => {
+      const rawTarget = source[targetName] && typeof source[targetName] === "object"
+        ? source[targetName]
+        : {};
+      return [targetName, Object.fromEntries(observerNames.map(observerName => {
+        const rawObserver = rawTarget[observerName] ??
+          (observerNames.length === 1 ? rawTarget : undefined);
+        return [observerName, normalizeRelationshipEntry(rawObserver, valueKind, sourceText)];
+      }))];
+    }));
+  }
+
+  function normalizeTrajectoryMap(scores, targetNames, sourceText) {
+    const source = scores && typeof scores === "object" ? scores : {};
+    return Object.fromEntries(targetNames.map(targetName => {
+      const raw = source[targetName] && typeof source[targetName] === "object"
+        ? source[targetName]
+        : {};
+      const entry = {
+        stateBefore: typeof raw.stateBefore === "string" ? raw.stateBefore.trim() : "",
+        stateAfter: typeof raw.stateAfter === "string" ? raw.stateAfter.trim() : "",
+        transition: typeof raw.transition === "string" ? raw.transition.trim() : "",
+        movement: clampNumber(raw.movement, 0, 10),
+        clarity: clampNumber(raw.clarity, 0, 10),
+        confidence: clampNumber(raw.confidence, 0, 10),
+        evidenceStrength: clampNumber(raw.evidenceStrength, 0, 10)
+      };
+      if (awarenessRationaleMode === "paraphrase") {
+        entry.rationale = typeof raw.rationale === "string" ? raw.rationale : "";
+      } else if (awarenessRationaleMode === "extractive") {
+        entry.evidence = normalizeEvidence(raw.evidence ?? raw.excerpts, sourceText);
+      }
+      return [targetName, entry];
+    }));
   }
 
   function normalizeSubjectRelationshipScoreMap(
@@ -375,62 +417,38 @@ Use the JSON field "${settings.rationaleField}" for that rationale.`;
     };
   }
 
-  function applyCalibrationToReaderAwarenessMap(scores, metricName) {
-    return Object.fromEntries(Object.entries(scores ?? {}).map(([name, entry]) => [
-      name,
-      applyCalibrationToAwarenessEntry(entry, metricName)
-    ]));
-  }
-
-  function applyCalibrationToCharacterAwarenessMap(scores, metricName) {
-    return Object.fromEntries(Object.entries(scores ?? {}).map(([thread, characters]) => [
-      thread,
-      Object.fromEntries(Object.entries(characters ?? {}).map(([character, entry]) => [
-        character,
+  function applyCalibrationToRelationshipMap(scores, metricName) {
+    return Object.fromEntries(Object.entries(scores ?? {}).map(([target, observers]) => [
+      target,
+      Object.fromEntries(Object.entries(observers ?? {}).map(([observer, entry]) => [
+        observer,
         applyCalibrationToAwarenessEntry(entry, metricName)
       ]))
     ]));
   }
 
-  function normalizeCharacterAwarenessMap(scores, plotThreadNames, characterNames, sourceText) {
-    const source = scores && typeof scores === "object" ? scores : {};
-    return Object.fromEntries(plotThreadNames.map(plotThreadName => [
-      plotThreadName,
-      Object.fromEntries(characterNames.map(characterName => [
-        characterName,
-        normalizeAwarenessEntry(
-          source[plotThreadName] && typeof source[plotThreadName] === "object"
-            ? source[plotThreadName][characterName]
-            : undefined,
-          sourceText
-        )
-      ]))
-    ]));
-  }
-
-  function normalizeReaderAwarenessMap(scores, targetNames, sourceText) {
-    const source = scores && typeof scores === "object" ? scores : {};
-    return Object.fromEntries(targetNames.map(targetName => [
-      targetName,
-      normalizeAwarenessEntry(source[targetName], sourceText)
+  function applyCalibrationToTrajectoryMap(scores, metricName) {
+    return Object.fromEntries(Object.entries(scores ?? {}).map(([target, entry]) => [
+      target,
+      applyCalibrationToAwarenessEntry(entry, metricName)
     ]));
   }
 
   return {
-    applyCalibrationToCharacterAwarenessMap,
-    applyCalibrationToReaderAwarenessMap,
+    applyCalibrationToRelationshipMap,
     applyCalibrationToStandardScores,
-    awarenessEntryJsonShape,
-    awarenessJsonShape,
+    applyCalibrationToTrajectoryMap,
     awarenessRationaleInstructions,
     awarenessSourceText,
     calibrationPromptGuidance,
-    normalizeCharacterAwarenessMap,
-    normalizeReaderAwarenessMap,
+    normalizeRelationshipMap,
     normalizeSceneOnlyScore,
     normalizeSubjectRelationshipScoreMap,
+    normalizeTrajectoryMap,
+    relationshipEntryJsonShape,
     standardMetricRationaleInstructions,
     standardMetricRationaleJsonShape,
-    standardMetricSourceText
+    standardMetricSourceText,
+    trajectoryEntryJsonShape
   };
 }

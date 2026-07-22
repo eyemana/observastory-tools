@@ -136,6 +136,18 @@ Extractive rationale sources may be selected from `scene`, `definitions`, `scene
 
 Entity types may provide a `readerAwareness` object containing `subject`, rubric text, and cautions. This allows Reader Awareness to evaluate a new configured story-thing type without adding a target-specific evaluator branch.
 
+### Relationship and trajectory contracts
+
+`evaluation.relationships` defines observer-target measurements such as reader awareness,
+character awareness, trust, suspicion, allegiance, or any custom dimension. The contract selects
+constant or entity observers, eligible target types, `readerOrder` or `chronology` context, the
+storage dimension, and whether the primary value is a scene `delta` or current `score`.
+
+`evaluation.trajectories` optionally describes change for any configured entity type. It does not
+define what an Arc is and does not require stages, forward movement, improvement, or character
+change. Each target note supplies its own model in prose; the evaluator records only the states
+or transition supported by the bounded context. See `docs/1.0-extension-tutorial.md`.
+
 ### Scene and fragment composition
 
 The configured Scenes folder is recursive. A Markdown note within it is an independently evaluated scene only when it has `type: scene` in frontmatter. Notes without that marker are fragments and do not appear as scenes in queue, chronology, freshness, or tutorial report discovery.
@@ -241,7 +253,8 @@ node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledge
 
 `evaluators/evaluate-scene.mjs` is the command-line composition root. It loads configuration and the current effective scene, assembles bounded-context services, selects an evaluator family, and performs the final atomic note write. Implementation details are separated by responsibility:
 
-- `evaluator-families.mjs` owns the standard-metric, reader-awareness, and character-awareness workflows.
+- `evaluation-contracts.mjs` resolves configured relationship and trajectory capabilities.
+- `evaluator-families.mjs` owns standard-metric, generic relationship, and generic trajectory workflows.
 - `prompt-builders.mjs` contains pure prompt templates and observer-specific instructions.
 - `response-policy.mjs` validates model output, restricts extractive evidence to supplied text, and applies lifecycle calibration.
 - `evaluation-store.mjs` owns input hashes, cache decisions, and generated observation frontmatter shapes.
@@ -249,7 +262,9 @@ node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledge
 - `scene-order-context.mjs` owns reader-order and chronology-order comparisons and formatting.
 - `model/ollama-json-client.mjs` owns the model transport contract.
 
-Most new dimensions use the standard evaluator family and therefore require only a metric definition and configuration. Add a specialized evaluator-family entry only when a dimension genuinely needs a different bounded context, prompt contract, response shape, or observation structure. This keeps custom extensions open without forcing every new metric through edits to the command-line orchestrator.
+Most new dimensions use the standard evaluator family. Observer-target measurements use the
+configured relationship family, and state/change observations use the configured trajectory
+family. A new family is code only when the result genuinely cannot fit those contracts.
 
 ## Scene Frontmatter
 
@@ -436,7 +451,7 @@ It supports three targets:
 
 - `reader awareness / character`: new reader knowledge about a character.
 - `reader awareness / plot thread`: new reader knowledge about a plot thread.
-- `reader awareness / arc`: new visible evidence that an arc progressed, reversed, deepened, or resolved.
+- `reader awareness / arc`: new visible evidence about the change described by that definition, using its own model rather than a built-in stage model.
 
 Scores are stored under scene frontmatter as observations:
 
@@ -597,7 +612,7 @@ Supported `truth` values:
 
 The scheduled crawl processes configured story-element notes and official scenes one source at a time, using `scheduler.throttleMs` between sources. An official scene is interpreted only after its `![[fragment]]` embeds have been expanded. Ordinary fragments and orphan fragments are not independently inferred as truth; their prose contributes through each official scene that embeds them. An explicit `[!claim]` inside a fragment remains a deliberate author assertion and is indexed once from that physical fragment.
 
-Each source pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Scene partials are cached by effective-content fingerprint, so editing a fragment invalidates every official scene that embeds it. The generated index records the owning source kind and scene dependencies without adding metadata to author notes. The worker merges those results and writes `observastory-tools/.index/truth-ledger.json`; do not edit that file by hand. Open `Example Book - A Ledger for Maribel Leigh/Reports/Truth Ledger.md` to review the result in Obsidian.
+Each source pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Scene partials are cached by effective-content fingerprint, so editing a fragment invalidates every official scene that embeds it. The generated index records the owning source kind and scene dependencies without adding metadata to author notes. Exact evidence found in an embedded fragment records that physical fragment and line as `composedFrom`. Deterministically equivalent statements are grouped as one fact with multiple occurrences; conflicting truth values remain visible rather than being silently resolved. The worker writes `observastory-tools/.index/truth-ledger.json`; do not edit that file by hand.
 
 An official scene is authoritative about what the manuscript presents, not automatically about objective story-world truth. This distinction allows narration, dialogue, memories, dreams, and character beliefs to be mistaken while still serving as reader-visible or character-visible evidence.
 
@@ -607,7 +622,7 @@ Awareness evaluators use the generated support map as grounding. reader awarenes
 
 Reports live in `Example Book - A Ledger for Maribel Leigh/Reports`.
 
-Most report pages use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves.
+Most report pages use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves. `report-catalog.cjs` merges configured evaluation axes with canonical observations so the primary metric reports discover new entity types, dimensions, and observer perspectives without source edits.
 
 Core report categories:
 
