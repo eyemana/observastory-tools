@@ -237,6 +237,20 @@ To process one scene directly:
 node evaluators/evaluate-scene.mjs "C:\path\to\your\vault\Example Book - A Ledger for Maribel Leigh\Scenes\Inventory Day.md" "tension" "character"
 ```
 
+### Evaluator architecture
+
+`evaluators/evaluate-scene.mjs` is the command-line composition root. It loads configuration and the current effective scene, assembles bounded-context services, selects an evaluator family, and performs the final atomic note write. Implementation details are separated by responsibility:
+
+- `evaluator-families.mjs` owns the standard-metric, reader-awareness, and character-awareness workflows.
+- `prompt-builders.mjs` contains pure prompt templates and observer-specific instructions.
+- `response-policy.mjs` validates model output, restricts extractive evidence to supplied text, and applies lifecycle calibration.
+- `evaluation-store.mjs` owns input hashes, cache decisions, and generated observation frontmatter shapes.
+- `truth-ledger-context.mjs` selects bounded Truth Ledger support for awareness prompts.
+- `scene-order-context.mjs` owns reader-order and chronology-order comparisons and formatting.
+- `model/ollama-json-client.mjs` owns the model transport contract.
+
+Most new dimensions use the standard evaluator family and therefore require only a metric definition and configuration. Add a specialized evaluator-family entry only when a dimension genuinely needs a different bounded context, prompt contract, response shape, or observation structure. This keeps custom extensions open without forcing every new metric through edits to the command-line orchestrator.
+
 ## Scene Frontmatter
 
 Scene notes are the canonical evaluated units. The evaluator scores every eligible character, plot thread, story engine, or arc note against selected scenes by default. Per-scene story-element lists are optional metadata for planning surfaces such as Storyboard, not required evaluator input.
