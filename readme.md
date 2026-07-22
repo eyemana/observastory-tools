@@ -629,12 +629,12 @@ Most report pages use Dataview or DataviewJS to read scene frontmatter and rende
 Core report categories:
 
 - `Observation Trajectory by Scene`: selector-driven line chart for entity type, dimension, observer, and delta/cumulative display. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
-- `Scene Profile`: selected-scene radar and score bars across available metric families, with scene lifecycle controls and raw/calibrated value notes when calibration affects the displayed score.
+- `Scene Profile`: selected-scene plain-language sections for scene craft, draft signals, referenced story elements, reader learning, character learning, and configured changes.
 - `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, scaffolding, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
 - `Truth Ledger`: selector-driven support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
-- `Goal Bullseye`: radar view of average goal achievement across metric families.
+- `Goal Bullseye`: radar-based Recommended Scene Profile with scene and lens controls. Scene craft has an adjustable goal ring; configured story-element lenses keep Relevance, Tension, and Resolution together while excluding awareness and warning signals.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 - `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
