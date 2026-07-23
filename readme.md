@@ -634,7 +634,7 @@ Core report categories:
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
 - `Truth Ledger`: selector-driven support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
-- `Goal Bullseye`: radar-based Recommended Scene Profile with scene and lens controls. Scene craft has an adjustable goal ring; configured story-element lenses keep Relevance, Tension, and Resolution together while excluding awareness and warning signals.
+- `Goal Bullseye`: the **Scene Development Map**, combining Craft, Story Movement, Information Flow, and Trajectories lenses with an observed-versus-goal radar, per-axis local goal controls, the underlying data table, evidence, target-opening, and selected re-evaluation actions.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 - `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
