@@ -192,9 +192,11 @@
 
   "truthLedger": {
     // Folder keys to scan for authored anchors and inferred support. Within the
-    // Scenes folder, only type: scene notes are inferred, after fragment expansion.
-    // Fragments participate through their owning scenes; an explicit [!claim]
-    // in a fragment is indexed once as a deliberate author assertion.
+    // Scenes folder: only type: scene notes participate independently, after
+    // embed expansion. Untyped scene-folder notes, including their [!claim]
+    // callouts, participate only through registered scenes that embed them.
+    // Equivalent claim IDs may occur in several configured notes and are
+    // retained as occurrences; conflicting reuse is a validation error.
     // These names come from story.folders above, keeping tutorial paths in one place.
     "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "narrators", "scenes"],
 

@@ -15,6 +15,7 @@ import { listEligibleDefinitionsFromPaths } from "../evaluation-filters.mjs";
 import {
   describeTruthLedgerSource,
   listTruthLedgerSources,
+  truthLedgerAuthoredInput,
   truthLedgerInferenceInput,
   truthLedgerScanRoots,
   truthLedgerSourceFingerprint,
@@ -24,6 +25,7 @@ import {
   attachComposedEvidenceProvenance,
   consolidateClaims
 } from "./claim-index.mjs";
+import { validateClaimIds } from "./claim-validation.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptRoot = path.dirname(__filename);
@@ -533,9 +535,8 @@ function parseClaimBlock(block, filePath, relativePath, entityCatalog) {
   };
 }
 
-function extractClaimBlocks(filePath, vaultRoot, entityCatalog) {
-  const raw = fs.readFileSync(filePath, "utf8");
-  const lines = raw.split(/\r?\n/);
+function extractClaimBlocks(content, filePath, vaultRoot, entityCatalog) {
+  const lines = content.split(/\r?\n/);
   const relativePath = path.relative(vaultRoot, filePath);
   const blocks = [];
 
@@ -771,10 +772,9 @@ async function inferClaims(sources, vaultRoot, inferenceConfig, warnings, entity
   return inferredClaims.sort(sortClaims);
 }
 
-function validateClaims(claims, scannedPaths) {
-  const errors = [];
+export function validateClaims(claims, scannedPaths) {
+  const errors = validateClaimIds(claims);
   const warnings = [];
-  const seen = new Map();
 
   for (const scannedPath of scannedPaths) {
     if (!fs.existsSync(scannedPath)) {
@@ -784,16 +784,6 @@ function validateClaims(claims, scannedPaths) {
 
   for (const claim of claims) {
     const where = `${claim.source.path}:${claim.source.line}`;
-
-    if (!claim.id) {
-      errors.push(`Claim is missing an id at ${where}`);
-    } else if (seen.has(claim.id)) {
-      errors.push(
-        `Duplicate claim id "${claim.id}" at ${where}; first seen at ${seen.get(claim.id)}`
-      );
-    } else {
-      seen.set(claim.id, where);
-    }
 
     if (!claim.truth) {
       errors.push(
@@ -865,14 +855,21 @@ async function main() {
 
   const entityCatalog = buildEntityCatalog(vaultRoot);
   const sources = explicitFiles.length > 0
-    ? explicitFiles.map(filePath => describeTruthLedgerSource(filePath, { config, vaultRoot }))
+    ? explicitFiles
+      .map(filePath => describeTruthLedgerSource(filePath, { config, vaultRoot }))
+      .filter(source => source.eligible && source.kind !== "fragment")
     : listTruthLedgerSources({ config, vaultRoot });
   const fingerprints = new Map(sources.map(source => [
     source.path,
     truthLedgerSourceFingerprint(source, config)
   ]));
   const claims = sources
-    .flatMap(source => extractClaimBlocks(source.path, vaultRoot, entityCatalog)
+    .flatMap(source => extractClaimBlocks(
+      truthLedgerAuthoredInput(source, config),
+      source.path,
+      vaultRoot,
+      entityCatalog
+    )
       .map(claim => attachSourceContext(claim, source, vaultRoot)))
     .sort(sortClaims);
   const { errors, warnings } = validateClaims(
@@ -935,7 +932,9 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (path.resolve(process.argv[1] ?? "") === __filename) {
+  main().catch(error => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

@@ -150,13 +150,15 @@ or transition supported by the bounded context. See `docs/1.0-extension-tutorial
 
 ### Scene and fragment composition
 
-The configured Scenes folder is recursive. A Markdown note within it is an independently evaluated scene only when it has `type: scene` in frontmatter. Notes without that marker are fragments and do not appear as scenes in queue, chronology, freshness, or tutorial report discovery.
+The configured Scenes folder is recursive. A Markdown note within it is an independently evaluated scene only when it has `type: scene` in frontmatter. Notes without that marker are unregistered free-writing or composition material and do not appear as scenes in queue, chronology, freshness, or tutorial report discovery. This registration rule is specific to Scenes; notes in other configured entity folders participate according to their own configuration and filters.
 
 Within scene prose, ordinary `[[links]]` remain unexpanded attention signals. A `![[fragment]]` embed is expanded transiently before current-scene evaluation, prior-scene context construction, link scanning, and freshness fingerprinting. Fragment frontmatter is discarded. A fragment may recursively embed another fragment, subject to `sceneComposition.maxDepth`; cycles, self-embeds, ambiguous or missing notes, and embeds of another official scene fail clearly.
 
 The generated Processing Status index records each official scene's composition dependencies. Its `Scene fragment dependencies` view shows every embedded fragment and the official scenes affected by editing it, highlighting fragments shared by more than one scene.
 
 Metadata `[[links]]` remain references. Metadata `![[embeds]]` are deliberately not expanded in this MVP because Obsidian properties do not natively render Markdown embeds.
+
+Shared embeds remain supported. `Inline Embed References...` is a general managed-content utility that can materialize a source into references in scenes, untyped scene-folder notes, characters, and other configured content. It performs complete discovery and selector resolution, discloses out-of-scope references, and offers Cancel before its first write. See `docs/1.0-beta-content-model.md`.
 
 Scene lifecycle calibration is controlled by each scene's `status` frontmatter. Missing status defaults to `draft`.
 
@@ -612,9 +614,9 @@ Supported `truth` values:
 - `ambiguous`
 - `unknown`
 
-The scheduled crawl processes configured story-element notes and official scenes one source at a time, using `scheduler.throttleMs` between sources. An official scene is interpreted only after its `![[fragment]]` embeds have been expanded. Ordinary fragments and orphan fragments are not independently inferred as truth; their prose contributes through each official scene that embeds them. An explicit `[!claim]` inside a fragment remains a deliberate author assertion and is indexed once from that physical fragment.
+The scheduled crawl processes configured story-element notes and official scenes one source at a time, using `scheduler.throttleMs` between sources. An official scene is interpreted only after its embeds have been expanded. Under the 1.0 beta contract, untyped notes under Scenes are not independent truth sources, including any `[!claim]` callouts they contain; their prose and claims participate only through each official scene that embeds them. Claims remain valid in other configured note types.
 
-Each source pass validates authored claim IDs and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. Scene partials are cached by effective-content fingerprint, so editing a fragment invalidates every official scene that embeds it. The generated index records the owning source kind and scene dependencies without adding metadata to author notes. Exact evidence found in an embedded fragment records that physical fragment and line as `composedFrom`. Deterministically equivalent statements are grouped as one fact with multiple occurrences; conflicting truth values remain visible rather than being silently resolved. The worker writes `observastory-tools/.index/truth-ledger.json`; do not edit that file by hand.
+Each source pass validates authored claims and truth values, resolves linked entities, and asks the local LLM for inferred support when `truthLedger.inference.enabled` is true. The beta contract permits the same authored claim to occur in several managed notes; equivalent claims consolidate while retaining every occurrence, and conflicting reuse should be reported for author attention. Scene partials are cached by effective-content fingerprint, so editing embedded content invalidates every official scene that embeds it. The generated index records the owning source kind and scene dependencies without adding metadata to author notes. Exact evidence found in an embedded note records that physical note and line as `composedFrom`. Deterministically equivalent statements are grouped as one fact with multiple occurrences; conflicting truth values remain visible rather than being silently resolved. The worker writes `observastory-tools/.index/truth-ledger.json`; do not edit that file by hand.
 
 An official scene is authoritative about what the manuscript presents, not automatically about objective story-world truth. This distinction allows narration, dialogue, memories, dreams, and character beliefs to be mistaken while still serving as reader-visible or character-visible evidence.
 

@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   listTruthLedgerSources,
+  truthLedgerAuthoredInput,
   truthLedgerInferenceInput,
   truthLedgerSourceFingerprint
 } from "../truth/truth-sources.mjs";
@@ -88,7 +89,7 @@ test("official scene inference expands fragments and its fingerprint follows dep
   }
 });
 
-test("a fragment contributes only explicit author claims and is never inferred independently", () => {
+test("an untyped scene-folder note is invisible as an independent truth source", () => {
   const root = fixture({
     "Scenes/Claim Fragment.md": [
       "> [!claim] childhood.arm",
@@ -101,11 +102,7 @@ test("a fragment contributes only explicit author claims and is never inferred i
   try {
     const sources = listTruthLedgerSources({ config: config(), vaultRoot: root });
 
-    assert.deepEqual(sourceNames(sources), ["Scenes/Claim Fragment.md"]);
-    assert.equal(sources[0].kind, "fragment");
-    assert.equal(sources[0].hasAuthoredClaims, true);
-    assert.equal(sources[0].infer, false);
-    assert.equal(truthLedgerInferenceInput(sources[0], config()), null);
+    assert.deepEqual(sourceNames(sources), []);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -124,6 +121,32 @@ test("shared fragments contribute through each owning official scene, not as a t
     assert.deepEqual(sourceNames(sources), ["Scenes/First.md", "Scenes/Second.md"]);
     assert.equal(
       sources.filter(source => /blue room/.test(truthLedgerInferenceInput(source, config()))).length,
+      2
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a claim embedded from an untyped note participates through every owning scene", () => {
+  const root = fixture({
+    "Scenes/First.md": "---\ntype: scene\n---\n![[Fragments/Fact]]",
+    "Scenes/Second.md": "---\ntype: scene\n---\n![[Fragments/Fact]]",
+    "Scenes/Fragments/Fact.md": [
+      "> [!claim] harbor.owner",
+      "> truth: true",
+      "> statement: The city owns the harbor."
+    ].join("\n")
+  });
+
+  try {
+    const sources = listTruthLedgerSources({ config: config(), vaultRoot: root });
+
+    assert.equal(sources.length, 2);
+    assert.equal(
+      sources.filter(source => /\[!claim\] harbor\.owner/.test(
+        truthLedgerAuthoredInput(source, config())
+      )).length,
       2
     );
   } finally {

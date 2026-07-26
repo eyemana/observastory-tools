@@ -30,6 +30,7 @@ import {
   truthLedgerSourceMetadata
 } from "../truth/truth-sources.mjs";
 import { consolidateClaims } from "../truth/claim-index.mjs";
+import { validateClaimIds } from "../truth/claim-validation.mjs";
 import {
   claimJob,
   clearWorkerStop,
@@ -52,7 +53,7 @@ const toolRoot = path.join(schedulerRoot, "..");
 const evaluatorPath = path.join(toolRoot, "evaluators", "evaluate-scene.mjs");
 const truthCollectorPath = path.join(toolRoot, "truth", "collect-truth-ledger.mjs");
 const chronologyIndexerPath = path.join(toolRoot, "chronology", "index-scene.mjs");
-const TRUTH_LEDGER_PARTIAL_CACHE_VERSION = 2;
+const TRUTH_LEDGER_PARTIAL_CACHE_VERSION = 3;
 
 class JobCanceledError extends Error {
   constructor(message = "Job canceled.") {
@@ -619,27 +620,7 @@ function sortClaims(a, b) {
 }
 
 function findDuplicateClaimErrors(claims) {
-  const errors = [];
-  const seen = new Map();
-
-  for (const claim of claims) {
-    const where = `${claim.source?.path ?? "(unknown)"}:${claim.source?.line ?? "?"}`;
-
-    if (!claim.id) {
-      errors.push(`Claim is missing an id at ${where}`);
-      continue;
-    }
-
-    if (seen.has(claim.id)) {
-      errors.push(
-        `Duplicate claim id "${claim.id}" at ${where}; first seen at ${seen.get(claim.id)}`
-      );
-    } else {
-      seen.set(claim.id, where);
-    }
-  }
-
-  return errors;
+  return validateClaimIds(claims);
 }
 
 function truthLedgerCachePath(paths, truthConfig) {

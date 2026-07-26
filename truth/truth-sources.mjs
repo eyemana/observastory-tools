@@ -16,8 +16,6 @@ import {
 } from "../scene-composition.mjs";
 import { authorMarkdownFingerprint } from "../fingerprints.mjs";
 
-const AUTHORED_CLAIM_PATTERN = /^>\s*\[!claim\][+-]?\s*/im;
-
 function walkMarkdownFiles(root) {
   if (!root || !fs.existsSync(root)) {
     return [];
@@ -71,14 +69,11 @@ export function describeTruthLedgerSource(filePath, { config, vaultRoot }) {
   const raw = fs.readFileSync(absolutePath, "utf8");
   const parsed = matter(raw);
   const kind = sourceKind(absolutePath, scenesRoot, parsed);
-  const hasAuthoredClaims = AUTHORED_CLAIM_PATTERN.test(raw);
-
   return {
     path: absolutePath,
     relativePath: path.relative(vaultRoot, absolutePath),
     kind,
     scenesRoot,
-    hasAuthoredClaims,
     eligible: noteMatchesFilters(parsed.data, sourceFilters(config, kind)),
     infer: kind !== "fragment",
     dependencies: []
@@ -97,10 +92,10 @@ export function listTruthLedgerSources({ config, vaultRoot }) {
       continue;
     }
 
-    // Fragments are composition dependencies, not independent manuscript
-    // evidence. Their only independent contribution is an explicit author
-    // assertion, which must be indexed once at its physical source.
-    if (source.kind === "fragment" && !source.hasAuthoredClaims) {
+    // Untyped notes under Scenes are composition material, never independent
+    // truth sources. Their prose and claims can participate through an
+    // official scene that embeds them.
+    if (source.kind === "fragment") {
       continue;
     }
 
@@ -136,6 +131,20 @@ export function truthLedgerInferenceInput(source, config) {
 
   source.dependencies = resolved.dependencies;
   return resolved.content.trim();
+}
+
+export function truthLedgerAuthoredInput(source, config) {
+  if (source.kind !== "scene") {
+    return matter(fs.readFileSync(source.path, "utf8")).content;
+  }
+
+  const resolved = resolveSceneText(source.path, {
+    scenesRoot: source.scenesRoot,
+    maxDepth: config.sceneComposition?.maxDepth
+  });
+
+  source.dependencies = resolved.dependencies;
+  return resolved.content;
 }
 
 export function truthLedgerSourceFingerprint(source, config) {
