@@ -33,13 +33,12 @@ for (const name of ["config.example.json", "config.local.json"]) {
 
 const config = loadConfig(toolsRoot);
 const vaultRoot = path.resolve(toolsRoot, "..");
-const storyRoot = path.resolve(vaultRoot, config.story?.root ?? "");
-const reportsRoot = path.resolve(storyRoot, config.story?.folders?.reports ?? "Reports");
+const studioRoot = path.resolve(vaultRoot, config.studio?.root ?? "Observastory Studio");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-let reportBlocks = 0;
+let studioBlocks = 0;
 
-if (fs.existsSync(reportsRoot)) {
-  for (const filePath of walk(reportsRoot).filter(candidate => candidate.endsWith(".md"))) {
+if (fs.existsSync(studioRoot)) {
+  for (const filePath of walk(studioRoot).filter(candidate => candidate.endsWith(".md"))) {
     const markdown = fs.readFileSync(filePath, "utf8");
     const blocks = markdown.matchAll(/```dataviewjs\s*\n([\s\S]*?)```/g);
     for (const match of blocks) {
@@ -48,9 +47,9 @@ if (fs.existsSync(reportsRoot)) {
       } catch (error) {
         throw new Error(`Invalid DataviewJS in ${filePath}: ${error.message}`);
       }
-      reportBlocks++;
+      studioBlocks++;
     }
   }
 }
 
-console.log(`Verified ${scripts.length} JavaScript files, 2 configuration files, and ${reportBlocks} DataviewJS report blocks.`);
+console.log(`Verified ${scripts.length} JavaScript files, 2 configuration files, and ${studioBlocks} DataviewJS Studio blocks.`);

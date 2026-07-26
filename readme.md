@@ -1,6 +1,6 @@
 # ObservaStory Tools
 
-Reusable Node and Obsidian Templater tools for ObservaStory scene evaluation, queueing, chronology indexing, Truth Ledger collection, and Dataview report support.
+Reusable Node and Obsidian Templater tools for the Observastory narrative development studio: scene evaluation, queueing, chronology indexing, Truth Ledger collection, and Dataview/Charts workspaces and lenses.
 
 The tools evaluate **scene notes**. Storyboard can group scenes into chapters for planning, but chapter blocks are a writer-controlled organization layer over scene notes.
 
@@ -11,7 +11,7 @@ Use `observastory-tools` for the repository, package name, and installed vault f
 ## Install In An Obsidian Vault
 
 1. Install Node.js 20 or newer and make sure `node` is available on PATH.
-2. Install and enable these Obsidian community plugins: Templater, Dataview, and Charts for chart-based reports.
+2. Install and enable these Obsidian community plugins: Templater, Dataview, and Charts for chart-based Studio lenses.
 3. Clone or copy this tools folder into the vault root as `observastory-tools`.
 4. From a terminal in `observastory-tools`, run:
 
@@ -33,13 +33,17 @@ Your Vault/
     templater/
     scheduler/
     evaluators/
+  Observastory Studio/
+    Start Here.md
+    Storyboard.md
+    Scene Profile.md
+    Truth Ledger.md
   Example Book - A Ledger for Maribel Leigh/
     Scenes/
     Characters/
     plot threads/
     Arcs/
     story engines/
-    Reports/
 ```
 
 ## Configure The Example Book
@@ -51,9 +55,12 @@ For `A Ledger for Maribel Leigh`, start from `config.example.json`. The importan
 - the **story root** is the book folder inside the vault
 - named story folders live inside that story root unless you override them
 
-For the tutorial, the story config looks like this:
+For the tutorial, Studio and story locations are configured separately:
 
 ```json
+"studio": {
+  "root": "Observastory Studio"
+},
 "story": {
   "root": "Example Book - A Ledger for Maribel Leigh",
   "folders": {
@@ -63,7 +70,6 @@ For the tutorial, the story config looks like this:
     "storyEngines": "story engines",
     "arcs": "Arcs",
     "metrics": "Metrics",
-    "reports": "Reports",
     "notes": "Notes"
   },
   "entityTypes": {
@@ -118,7 +124,7 @@ If the story folders live directly at the Obsidian vault root, set:
 }
 ```
 
-With the default folder names, this resolves `Scenes`, `Characters`, `Reports`, and the other configured folders directly under the vault root. Relative paths are always resolved from the vault root, not from `observastory-tools` or the terminal's current directory.
+With the default folder names, this resolves `Scenes`, `Characters`, and the other configured story folders directly under the vault root. `studio.root` remains independent. Relative paths are always resolved from the vault root, not from `observastory-tools` or the terminal's current directory.
 
 ### Generic metric extension settings
 
@@ -173,7 +179,7 @@ Lifecycle statuses:
 - `live`: evaluated as book-ready prose. Draft dampening is removed; scaffolding, TODOs, placeholders, and outline fragments should lower the appropriate craft scores.
 - `archived`: excluded from normal evaluation and Truth Ledger processing.
 
-Calibration caps use the evaluator's 0-10 scale. The raw evaluator value is preserved as `rawValue`; reports use the displayed capped value while showing the raw value when they differ.
+Calibration caps use the evaluator's 0-10 scale. The raw evaluator value is preserved as `rawValue`; Studio surfaces use the displayed capped value while showing the raw value when they differ.
 
 ## Quick Start
 
@@ -344,12 +350,12 @@ status: draft
 
 Supported scene statuses:
 
-- `scratch`: private working material; excluded from evaluation, Truth Ledger, and normal story reports.
+- `scratch`: private working material; excluded from evaluation, Truth Ledger, and normal Studio views.
 - `draft`: working scene; evaluated with draft calibration. Links are treated as strong author intent, and polish-facing scores such as Pacing, Poetics, and Coherence may be capped so known deficiencies remain visible.
 - `live`: ready-for-book scene; evaluated without draft dampening. Scaffolding, TODOs, placeholders, outline fragments, and paraphrase should hurt the appropriate craft scores.
 
 Lifecycle status and Scaffolding answer different questions. `draft` is author workflow state; Scaffolding measures visible support material in the actual scene text. Draft status therefore does not automatically raise Scaffolding.
-- `archived`: old scene version; excluded from evaluation, Truth Ledger, and normal story reports.
+- `archived`: old scene version; excluded from evaluation, Truth Ledger, and normal Studio views.
 
 The default profile includes element notes and scenes unless they opt out through an excluded status or an excluded tag. To skip a scene in the normal queue without changing its lifecycle, tag it like this:
 
@@ -379,7 +385,7 @@ With that profile, only scenes and story elements tagged `harbor-experiment` are
 
 ## Storyboard
 
-Open `Example Book - A Ledger for Maribel Leigh/Reports/Storyboard.md` in Obsidian.
+Open `Observastory Studio/Storyboard.md` in Obsidian.
 
 ![Storyboard overview](docs/images/storyboard-overview.png)
 
@@ -397,7 +403,7 @@ The second selector controls the data lens:
 
 character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
 
-Open `Example Book - A Ledger for Maribel Leigh/Reports/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This report is read-only and sorts by `ai.chronology.sort`.
+Open `Observastory Studio/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This workspace is read-only and sorts by `ai.chronology.sort`.
 
 ### Scene Tiles
 
@@ -622,32 +628,32 @@ An official scene is authoritative about what the manuscript presents, not autom
 
 Awareness evaluators use the generated support map as grounding. reader awareness receives support from prior story-order scenes as reader-visible context. character awareness receives support from prior chronology scenes as candidate character-visible context and must still decide whether a character plausibly had access.
 
-## Reports
+## Observastory Studio
 
-Reports live in `Example Book - A Ledger for Maribel Leigh/Reports`.
+Studio workspaces and lenses live in the vault-root `Observastory Studio` folder. They are narrative development tooling, not part of the configured story root.
 
-Most report pages use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves. `report-catalog.cjs` merges configured evaluation axes with canonical observations so the primary metric reports discover new entity types, dimensions, and observer perspectives without source edits.
+Most Studio surfaces use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves unless they expose an explicit author-invoked action. The internal compatibility module `report-catalog.cjs` merges configured evaluation axes with canonical observations so the primary lenses discover new entity types, dimensions, and observer perspectives without source edits.
 
-Core report categories:
+Core workspaces and lenses:
 
-- `Observation Trajectory by Scene`: selector-driven line chart for entity type, dimension, observer, and delta/cumulative display. This is the main entity/dimension/observation report and replaces the old one-report-per-metric pattern.
+- `Observation Trajectory by Scene`: selector-driven line-chart lens for entity type, dimension, observer, and delta/cumulative display. This replaces the old one-surface-per-metric pattern.
 - `Scene Profile`: selected-scene plain-language sections for scene craft, draft signals, referenced story elements, reader learning, character learning, and configured changes.
 - `Metric Heatmaps`: selector-driven heatmaps for relevance, tension, resolution, pacing, conflict, poetics, coherence, scaffolding, and awareness-style signals.
 - `Story Overview`: story-level word count, POV, chapter, and metric overview charts.
 - `Chronology Timeline`: full-scene chronology strip ordered by generated chronology sort.
 - `Truth Ledger`: selector-driven support map from configured notes, including authored anchors, inferred support, resolved entities, and source evidence.
-- `Goal Bullseye`: the **Scene Development Map**, combining Craft, Story Movement, Information Flow, and Trajectories lenses with an observed-versus-goal radar, per-axis local goal controls, the underlying data table, evidence, target-opening, and selected re-evaluation actions.
+- `Scene Development Map`: selected-scene workspace combining Craft, Story Movement, Information Flow, and Trajectories lenses with an observed-versus-goal radar, per-axis local goal controls, the underlying data table, evidence, target-opening, and selected re-evaluation actions.
 - `Goal Heatmap`: scene-by-scene heatmap of goal achievement and lowest-scoring areas.
 - `Storyboard`: the interactive planning surface for ordering scenes and chapters.
 - `Chronology Storyboard`: read-only chronology view for scenes involving a selected character, plot thread, or arc.
 
-One-off report permutations have been pruned. Use selector-driven reports instead of adding entity/dimension permutations.
+One-off permutations have been pruned. Use selector-driven lenses instead of adding entity/dimension permutations.
 
-If a report is empty:
+If a Studio surface is empty:
 
 - Confirm the scene evaluation queue has run for that dimension/entity type.
 - Reopen the note or refresh Dataview.
-- Confirm the Charts plugin is enabled for chart reports.
+- Confirm the Charts plugin is enabled for chart-based lenses.
 - Inspect the scene frontmatter under `ai` to confirm the expected data exists.
 
 ## Scheduler Modes
@@ -769,7 +775,7 @@ Run only reader awareness from Obsidian with `Templates/Queue-Evaluation-Reader-
 
 ## Processing Status and Stale Work
 
-`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `Reports/Processing Status.md`.
+`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `Observastory Studio/Processing Status.md`.
 
 The status index compares author-owned fingerprints instead of modification times:
 

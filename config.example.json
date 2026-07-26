@@ -7,6 +7,12 @@
   // Example options depend on what is installed locally: "qwen2.5:7b", "llama3.1:8b", etc.
   "model": "qwen2.5:7b",
 
+  // Interactive Dataview/Charts workspaces and lenses used by this POC.
+  // Studio surfaces are tooling, not part of story.root.
+  "studio": {
+    "root": "Observastory Studio"
+  },
+
   "awareness": {
     // Controls whether awareness evaluators store generated rationale text.
     // "off": store only bounded numeric fields.
@@ -21,7 +27,7 @@
 
   "story": {
     // Root folder for the book/story inside the Obsidian vault.
-    // Use "." when Scenes, Characters, Reports, and the other story folders
+    // Use "." when Scenes, Characters, and the other story folders
     // live directly at the vault root.
     "root": "Example Book - A Ledger for Maribel Leigh",
 
@@ -35,7 +41,6 @@
       "arcs": "Arcs",
       "narrators": "Narrators",
       "metrics": "Metrics",
-      "reports": "Reports",
       "notes": "Notes"
     },
 
@@ -147,7 +152,7 @@
       "rationaleSources": ["scene", "definitions"],
 
       // Frontmatter field used for paraphrased rationale on standard metric score objects.
-      // Existing reports expect "sceneRationale".
+      // Existing Studio surfaces expect "sceneRationale".
       "rationaleField": "sceneRationale"
     },
 
@@ -200,7 +205,7 @@
     // These names come from story.folders above, keeping tutorial paths in one place.
     "folders": ["notes", "arcs", "storyEngines", "plotThreads", "characters", "narrators", "scenes"],
 
-    // Generated JSON index used by reports and awareness evaluator grounding.
+    // Generated JSON index used by Studio surfaces and awareness evaluator grounding.
     // Relative paths are resolved from the observastory-tools folder.
     "outputPath": ".index/truth-ledger.json",
 

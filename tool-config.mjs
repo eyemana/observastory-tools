@@ -4,6 +4,9 @@ import path from "path";
 export const defaultConfig = {
   ollamaUrl: "http://localhost:11434/api/generate",
   model: "qwen2.5:7b",
+  studio: {
+    root: "Observastory Studio"
+  },
   awareness: {
     rationaleMode: "paraphrase",
     rationaleSources: ["scene", "definitions", "priorScenes"]
@@ -18,7 +21,6 @@ export const defaultConfig = {
       arcs: "Arcs",
       narrators: "Narrators",
       metrics: "Metrics",
-      reports: "Reports",
       notes: "Notes"
     },
     entityTypes: {
