@@ -47,6 +47,6 @@ These surfaces consume canonical observations and indexes. Moving them out of th
 
 The configured story root contains the developing book and its author-owned model: scenes, characters, narrators, plot threads, arcs, story engines, metrics, and notes.
 
-The Studio root contains interface surfaces. `Templates` contains the current POC command adapter. `observastory-tools` contains the reusable engine and generated state.
+The Studio root contains interface surfaces. `observastory-templates` contains the current internal POC command adapter. `observastory-tools` contains the reusable engine and generated state.
 
 This boundary prevents interface notes from being mistaken for book content, truth sources, evaluation targets, or managed prose during content operations such as `Inline Embed References...`.

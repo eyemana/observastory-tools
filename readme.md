@@ -21,13 +21,13 @@ npm install
 
 5. Copy `config.example.json` to `config.local.json` and adjust the model, Ollama URL, and story paths for your vault.
 6. In Obsidian Templater settings, set the user scripts folder to `observastory-tools/templater`.
-7. Put the command templates in a vault-level `Templates` folder, or point Obsidian at the folder where you keep them.
+7. Put the command templates in a vault-level `observastory-templates` folder, or point Obsidian at the folder where you keep them.
 8. For the POC book, keep the example content at `Example Book - A Ledger for Maribel Leigh` in the vault root.
 
 A minimal POC layout looks like this:
 ```text
 Your Vault/
-  Templates/
+  observastory-templates/
   observastory-tools/
     config.local.json
     templater/
@@ -185,17 +185,17 @@ Calibration caps use the evaluator's 0-10 scale. The raw evaluator value is pres
 
 From Obsidian, use these Templater templates:
 
-- `Templates/Queue-Evaluation-All-Scenes.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
-- `Templates/Queue-Evaluation-Current-Scene.md`: queue the full configured evaluation set for only the active scene.
-- `Templates/Queue-Evaluation-Reader-Awareness.md`: rerun only reader awareness after changing scene order.
-- `Templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
-- `Templates/Queue-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
-- `Templates/Queue-Stale-Work.md`: queue only work that Processing Status can identify as stale, missing, or legacy.
-- `Templates/Queue-Cancel-Job.md`: cancel the latest queued or running job.
-- `Templates/Scheduler-Start.md`: start a background scheduler worker.
-- `Templates/Scheduler-Status.md`: show worker and active-job status, and refresh `observastory-tools/.index/processing-status.json`.
-- `Templates/Scheduler-Stop-After-Current.md`: let the current job finish, then stop the worker.
-- `Templates/Scheduler-Stop.md`: stop the background scheduler worker immediately.
+- `observastory-templates/Queue-Evaluation-All-Scenes.md`: queue the full configured evaluation set for every scene in the configured story scenes folder.
+- `observastory-templates/Queue-Evaluation-Current-Scene.md`: queue the full configured evaluation set for only the active scene.
+- `observastory-templates/Queue-Evaluation-Reader-Awareness.md`: rerun only reader awareness after changing scene order.
+- `observastory-templates/Queue-Chronology-Index.md`: queue a throttled chronology index pass.
+- `observastory-templates/Queue-Truth-Ledger.md`: queue a throttled Truth Ledger crawl.
+- `observastory-templates/Queue-Stale-Work.md`: queue only work that Processing Status can identify as stale, missing, or legacy.
+- `observastory-templates/Queue-Cancel-Job.md`: cancel the latest queued or running job.
+- `observastory-templates/Scheduler-Start.md`: start a background scheduler worker.
+- `observastory-templates/Scheduler-Status.md`: show worker and active-job status, and refresh `observastory-tools/.index/processing-status.json`.
+- `observastory-templates/Scheduler-Stop-After-Current.md`: let the current job finish, then stop the worker.
+- `observastory-templates/Scheduler-Stop.md`: stop the background scheduler worker immediately.
 
 From a terminal in `observastory-tools`:
 
@@ -597,7 +597,7 @@ The Truth Ledger is a generated support map. It resolves `[[links]]` against kno
 - **Authored anchors**: optional `[!claim]` callouts for facts you want to pin explicitly.
 - **Inferred support**: lower-authority claims inferred by the local LLM from scanned notes, with exact evidence excerpts and resolved entities where possible.
 
-Run `Templates/Queue-Truth-Ledger.md` or:
+Run `observastory-templates/Queue-Truth-Ledger.md` or:
 
 ```sh
 node scheduler/enqueue-truth-ledger.mjs
@@ -696,7 +696,7 @@ The scheduler has one worker and multiple job types:
 
 `background` mode leaves the worker running separately. In this mode, Templater only queues jobs; the long-running worker picks them up on its next poll.
 
-When `scheduler.backgroundSceneScan.enabled` is true, the background worker scans eligible `type: scene` notes and queues a small evaluation job only for scenes whose effective author-owned input changed. The fingerprint includes root-scene frontmatter and recursively expanded fragment prose while ignoring the generated `ai` branch. A fragment edit therefore makes each embedding scene stale, while evaluator writes do not trigger another loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `Templates/Queue-Evaluation-All-Scenes.md` when you intentionally want a full pass.
+When `scheduler.backgroundSceneScan.enabled` is true, the background worker scans eligible `type: scene` notes and queues a small evaluation job only for scenes whose effective author-owned input changed. The fingerprint includes root-scene frontmatter and recursively expanded fragment prose while ignoring the generated `ai` branch. A fragment edit therefore makes each embedding scene stale, while evaluator writes do not trigger another loop. The first background run writes a baseline by default instead of queueing every existing scene. Use `observastory-templates/Queue-Evaluation-All-Scenes.md` when you intentionally want a full pass.
 
 `backgroundSceneScan.debounceMs` controls how long a changed scene must stay stable before the worker queues it. This is the guardrail for active Obsidian editing: repeated saves to the current scene update the pending fingerprint rather than spawning a burst of duplicate jobs.
 
@@ -710,13 +710,13 @@ Scene evaluation jobs are incremental by default. Each evaluator stores an input
 - `ask`: ask whether to queue reader awareness.
 - `auto`: queue reader awareness immediately.
 
-Start the background worker from Obsidian with `Templates/Scheduler-Start.md`, or from a terminal:
+Start the background worker from Obsidian with `observastory-templates/Scheduler-Start.md`, or from a terminal:
 
 ```sh
 node scheduler/worker.mjs --watch
 ```
 
-Check status from Obsidian with `Templates/Scheduler-Status.md`, or from a terminal:
+Check status from Obsidian with `observastory-templates/Scheduler-Status.md`, or from a terminal:
 
 ```sh
 node scheduler/status.mjs
@@ -728,13 +728,13 @@ Refresh the generated Processing Status index from a terminal:
 node status/freshness.mjs --vault-root "C:\path\to\your\vault" --write
 ```
 
-Request a graceful stop after the current job from Obsidian with `Templates/Scheduler-Stop-After-Current.md`, or from a terminal:
+Request a graceful stop after the current job from Obsidian with `observastory-templates/Scheduler-Stop-After-Current.md`, or from a terminal:
 
 ```sh
 node scheduler/stop-worker.mjs --after-current
 ```
 
-Stop the background worker immediately from Obsidian with `Templates/Scheduler-Stop.md`, or from a terminal:
+Stop the background worker immediately from Obsidian with `observastory-templates/Scheduler-Stop.md`, or from a terminal:
 
 ```sh
 node scheduler/stop-worker.mjs
@@ -754,9 +754,9 @@ node scheduler/cancel-job.mjs --latest
 
 ## Scene Evaluation Queueing
 
-Use `Templates/Queue-Evaluation-All-Scenes.md` to process the configured `story.folders.scenes` folder.
+Use `observastory-templates/Queue-Evaluation-All-Scenes.md` to process the configured `story.folders.scenes` folder.
 
-Use `Templates/Queue-Evaluation-Current-Scene.md` when you want the full configured evaluator set for just the active scene.
+Use `observastory-templates/Queue-Evaluation-Current-Scene.md` when you want the full configured evaluator set for just the active scene.
 
 Queued scene evaluations skip unchanged metric/target axes by default. A skipped evaluation is counted as a successful evaluator process in the job log, but it does not call the model and does not rewrite the scene file.
 
@@ -769,13 +769,13 @@ By default, the Templater script:
 
 The worker writes job logs to `observastory-tools/.queue/logs`.
 
-Cancel a queued or running job from Obsidian with `Templates/Queue-Cancel-Job.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
+Cancel a queued or running job from Obsidian with `observastory-templates/Queue-Cancel-Job.md`. Running jobs stop before the next evaluator call. If cancellation arrives while one evaluator process is active, the worker stops that child process.
 
-Run only reader awareness from Obsidian with `Templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes reader awareness; this template is for targeted reruns after order changes.
+Run only reader awareness from Obsidian with `observastory-templates/Queue-Evaluation-Reader-Awareness.md`. The full scene evaluation queue also includes reader awareness; this template is for targeted reruns after order changes.
 
 ## Processing Status and Stale Work
 
-`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `ObservaStory/Processing Status.md`.
+`observastory-templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `ObservaStory/Processing Status.md`.
 
 The status index compares author-owned fingerprints instead of modification times:
 
@@ -784,7 +784,7 @@ The status index compares author-owned fingerprints instead of modification time
 - chronology metadata is compared against hashes of `chronology_label` and `chronology_value`
 - evaluator axes are marked `fresh`, `stale`, `pending`, `unknown`, `never-run`, or `legacy` from stored `ai.evaluationInputs`
 
-Use `Templates/Queue-Stale-Work.md` to queue only currently actionable work. From a terminal, preview the plan without creating jobs:
+Use `observastory-templates/Queue-Stale-Work.md` to queue only currently actionable work. From a terminal, preview the plan without creating jobs:
 
 ```sh
 node scheduler/enqueue-stale-work.mjs --vault-root "C:\path\to\your\vault" --dry-run
