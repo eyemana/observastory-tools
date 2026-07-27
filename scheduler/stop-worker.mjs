@@ -9,31 +9,14 @@ import {
   readJob,
   requestWorkerStop
 } from "./queue.mjs";
+import {
+  getWorkerRuntime,
+  isProcessRunning
+} from "./runtime.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
 const toolRoot = path.join(schedulerRoot, "..");
-
-function isProcessRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
-
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-
-function readLock(lockFile) {
-  try {
-    return JSON.parse(fs.readFileSync(lockFile, "utf8"));
-  } catch {
-    return null;
-  }
-}
 
 function hasFlag(name) {
   return process.argv.includes(name);
@@ -59,48 +42,17 @@ async function waitForStop(pid, lockFile, timeoutMs = 5000) {
 
 const schedulerConfig = getSchedulerConfig(toolRoot);
 const paths = getQueuePaths(toolRoot, schedulerConfig);
-const lock = readLock(paths.lockFile);
-const pid = Number(lock?.pid);
+const worker = getWorkerRuntime(paths);
+const pid = worker.pid;
 const afterCurrent = hasFlag("--after-current") || hasFlag("--graceful");
 
-if (!lock || !Number.isInteger(pid)) {
-  if (afterCurrent) {
-    const stopFile = requestWorkerStop(paths);
-    console.log(JSON.stringify({
-      status: "stop-requested",
-      mode: "after-current",
-      stopFile,
-      message: "No running scheduler was found, but a stop marker was written."
-    }));
-    process.exit(0);
-  }
-
+if (!worker.processRunning || !Number.isInteger(pid)) {
+  fs.rmSync(paths.lockFile, { force: true });
+  fs.rmSync(paths.heartbeatFile, { force: true });
   console.log(JSON.stringify({
     status: "not-running",
-    message: "No scheduler lock file was found."
-  }));
-  process.exit(0);
-}
-
-if (!isProcessRunning(pid)) {
-  fs.rmSync(paths.lockFile, { force: true });
-
-  if (afterCurrent) {
-    const stopFile = requestWorkerStop(paths);
-    console.log(JSON.stringify({
-      status: "stale-lock-removed-stop-requested",
-      mode: "after-current",
-      pid,
-      stopFile,
-      message: "Scheduler was not running; removed stale lock and wrote a stop marker."
-    }));
-    process.exit(0);
-  }
-
-  console.log(JSON.stringify({
-    status: "stale-lock-removed",
-    pid,
-    message: "Scheduler was not running; removed stale lock."
+    mode: afterCurrent ? "after-current" : "immediate",
+    message: "Background scheduler is not running; no stop request was left behind."
   }));
   process.exit(0);
 }

@@ -14,6 +14,7 @@ export function getQueuePaths(toolRoot, schedulerConfig = getSchedulerConfig(too
     jobsDir: path.join(queueRoot, "jobs"),
     logsDir: path.join(queueRoot, "logs"),
     lockFile: path.join(queueRoot, "worker.lock"),
+    heartbeatFile: path.join(queueRoot, "worker.heartbeat.json"),
     stopFile: path.join(queueRoot, "worker.stop")
   };
 }
@@ -303,7 +304,7 @@ export function requestCancelJob(paths, jobId, reason = "Cancellation requested.
   };
 }
 
-export function claimJob(jobPath) {
+export function claimJob(jobPath, workerIdentity) {
   const runningPath = jobPath.replace(/\.queued\.json$/, ".running.json");
 
   try {
@@ -316,6 +317,13 @@ export function claimJob(jobPath) {
   job.status = "running";
   job.startedAt = new Date().toISOString();
   job.updatedAt = job.startedAt;
+  job.worker = workerIdentity
+    ? {
+        pid: workerIdentity.pid,
+        instanceId: workerIdentity.instanceId,
+        startedAt: workerIdentity.startedAt
+      }
+    : null;
   writeJob(runningPath, job);
 
   return {

@@ -46,6 +46,10 @@ import {
   readJob,
   writeJob
 } from "./queue.mjs";
+import {
+  acquireWorkerLease,
+  recoverOrphanedJobs
+} from "./runtime.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
@@ -303,64 +307,6 @@ function scanBackgroundSceneChanges(schedulerConfig, paths) {
   });
 
   console.log(`Queued ${changed.length} changed scene(s) from background scan: ${result.id}`);
-}
-
-function isProcessRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
-  }
-
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-
-function readLock(lockFile) {
-  try {
-    return JSON.parse(fs.readFileSync(lockFile, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-function acquireWorkerLock(paths) {
-  fs.mkdirSync(paths.queueRoot, { recursive: true });
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const handle = fs.openSync(paths.lockFile, "wx");
-      fs.writeFileSync(handle, JSON.stringify({
-        pid: process.pid,
-        startedAt: new Date().toISOString()
-      }, null, 2));
-      fs.closeSync(handle);
-
-      return () => {
-        const current = readLock(paths.lockFile);
-
-        if (current?.pid === process.pid) {
-          fs.rmSync(paths.lockFile, { force: true });
-        }
-      };
-    } catch (error) {
-      if (error.code !== "EEXIST") {
-        throw error;
-      }
-
-      const current = readLock(paths.lockFile);
-
-      if (isProcessRunning(current?.pid)) {
-        return null;
-      }
-
-      fs.rmSync(paths.lockFile, { force: true });
-    }
-  }
-
-  return null;
 }
 
 async function runEvaluator(filePath, metric, target, profileName, logPath, paths, jobId, force = false) {
@@ -1252,7 +1198,7 @@ async function processJob(claimed, schedulerConfig, paths) {
   }
 }
 
-async function processAvailableJobs({ once, schedulerConfig, paths }) {
+async function processAvailableJobs({ once, schedulerConfig, paths, workerIdentity }) {
   let processed = 0;
 
   while (true) {
@@ -1268,7 +1214,7 @@ async function processAvailableJobs({ once, schedulerConfig, paths }) {
     }
 
     for (const queuedJobFile of queuedJobFiles) {
-      const claimed = claimJob(queuedJobFile);
+      const claimed = claimJob(queuedJobFile, workerIdentity);
 
       if (!claimed) {
         continue;
@@ -1290,20 +1236,29 @@ async function main() {
   const paths = getQueuePaths(toolRoot, schedulerConfig);
   ensureQueueDirs(paths);
 
-  const releaseLock = acquireWorkerLock(paths);
+  const lease = acquireWorkerLease(paths);
 
-  if (!releaseLock) {
+  if (!lease) {
     console.log("Scheduler worker is already running.");
     return;
   }
 
-  process.on("exit", releaseLock);
+  const heartbeatTimer = setInterval(lease.touch, 2000);
+  heartbeatTimer.unref();
+  const recoveredJobs = recoverOrphanedJobs(paths, lease.identity);
+  if (recoveredJobs.length > 0) {
+    console.log(`Recovered ${recoveredJobs.length} orphaned job(s).`);
+  }
+
+  process.on("exit", lease.release);
   process.on("SIGINT", () => {
-    releaseLock();
+    clearInterval(heartbeatTimer);
+    lease.release();
     process.exit(130);
   });
   process.on("SIGTERM", () => {
-    releaseLock();
+    clearInterval(heartbeatTimer);
+    lease.release();
     process.exit(143);
   });
 
@@ -1316,7 +1271,8 @@ async function main() {
     await processAvailableJobs({
       once,
       schedulerConfig,
-      paths
+      paths,
+      workerIdentity: lease.identity
     });
     return;
   }
@@ -1334,7 +1290,8 @@ async function main() {
     await processAvailableJobs({
       once: false,
       schedulerConfig,
-      paths
+      paths,
+      workerIdentity: lease.identity
     });
 
     if (isWorkerStopRequested(paths)) {

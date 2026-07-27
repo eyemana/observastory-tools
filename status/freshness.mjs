@@ -19,6 +19,9 @@ import {
 import {
   chronologyInputHash
 } from "../fingerprints.mjs";
+import {
+  EVALUATION_INPUT_HASH_VERSION
+} from "../evaluators/evaluation-store.mjs";
 import { toCamelCase } from "../vault-utils.mjs";
 import {
   listSceneFiles,
@@ -48,6 +51,12 @@ function readOption(name) {
 
 function hasFlag(name) {
   return process.argv.includes(name);
+}
+
+export function evaluationMetadataIsCurrent(metadata) {
+  return metadata?.version === EVALUATION_INPUT_HASH_VERSION &&
+    typeof metadata.inputHash === "string" &&
+    metadata.inputHash.length > 0;
 }
 
 function resolveFromRoot(root, configuredPath) {
@@ -266,7 +275,7 @@ function evaluationAxisStatus({
     };
   }
 
-  if (metadata.version !== 1 || !metadata.inputHash) {
+  if (!evaluationMetadataIsCurrent(metadata)) {
     return {
       ...base,
       status: "legacy",

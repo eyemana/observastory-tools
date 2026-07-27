@@ -2,12 +2,16 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-import { getSchedulerConfig } from "../tool-config.mjs";
+import { loadConfig } from "../tool-config.mjs";
 import {
   getQueuePaths,
   readJob,
   readWorkerStop
 } from "./queue.mjs";
+import {
+  getWorkerRuntime,
+  jobIsOwnedByWorker
+} from "./runtime.mjs";
 import {
   buildFreshnessReport,
   writeFreshnessReport
@@ -17,24 +21,57 @@ const __filename = fileURLToPath(import.meta.url);
 const schedulerRoot = path.dirname(__filename);
 const toolRoot = path.join(schedulerRoot, "..");
 
-function isProcessRunning(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return false;
+async function checkModel(config) {
+  const endpoint = config.ollamaUrl;
+  const model = config.model;
+
+  if (!endpoint) {
+    return {
+      status: "not-configured",
+      endpoint: null,
+      model,
+      reason: "No Ollama endpoint is configured."
+    };
   }
 
   try {
-    process.kill(pid, 0);
-    return true;
+    const url = new URL(endpoint);
+    url.pathname = "/api/tags";
+    url.search = "";
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(1500)
+    });
+
+    if (!response.ok) {
+      return {
+        status: "unavailable",
+        endpoint,
+        model,
+        reason: `Ollama returned HTTP ${response.status}.`
+      };
+    }
+
+    const body = await response.json();
+    const names = (body.models ?? []).map(item => item.name);
+    const modelAvailable = names.includes(model);
+    return {
+      status: modelAvailable ? "ready" : "model-missing",
+      endpoint,
+      model,
+      availableModels: names,
+      reason: modelAvailable
+        ? "Ollama is reachable and the configured model is installed."
+        : `Ollama is reachable, but ${model} is not installed.`
+    };
   } catch (error) {
-    return error.code === "EPERM";
-  }
-}
-
-function readLock(lockFile) {
-  try {
-    return JSON.parse(fs.readFileSync(lockFile, "utf8"));
-  } catch {
-    return null;
+    return {
+      status: "unavailable",
+      endpoint,
+      model,
+      reason: error.cause?.code === "ECONNREFUSED"
+        ? "Ollama is not running."
+        : `Ollama could not be reached: ${error.message}`
+    };
   }
 }
 
@@ -60,19 +97,23 @@ function listJobFiles(paths) {
     .map(name => path.join(paths.jobsDir, name));
 }
 
-function summarizeJob(jobPath) {
+function summarizeJob(jobPath, worker) {
   const job = readJob(jobPath);
+  const status = job.status === "running" && !jobIsOwnedByWorker(job, worker)
+    ? "orphaned"
+    : job.status;
 
   return {
     id: job.id,
     type: job.type,
     label: job.label,
-    status: job.status,
+    status,
     createdAt: job.createdAt,
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
     updatedAt: job.updatedAt,
     progress: job.progress,
+    worker: job.worker ?? null,
     error: job.error,
     logPath: job.logPath ?? path.join(path.dirname(path.dirname(jobPath)), "logs", `${job.id}.log`)
   };
@@ -121,42 +162,44 @@ function summarizeFreshness(report) {
   };
 }
 
-const schedulerConfig = getSchedulerConfig(toolRoot);
+const config = loadConfig(toolRoot);
+const schedulerConfig = config.scheduler;
 const paths = getQueuePaths(toolRoot, schedulerConfig);
-const lock = readLock(paths.lockFile);
-const pid = Number(lock?.pid);
-const running = isProcessRunning(pid);
+const worker = getWorkerRuntime(paths);
 const stopRequest = readWorkerStop(paths);
-const jobs = listJobFiles(paths).map(summarizeJob);
-const activeJobs = jobs.filter(job => ["queued", "running"].includes(job.status));
+const jobs = listJobFiles(paths).map(jobPath => summarizeJob(jobPath, worker));
+const activeJobs = jobs.filter(job => ["queued", "running", "orphaned"].includes(job.status));
 const recentJobs = jobs
-  .filter(job => !["queued", "running"].includes(job.status))
+  .filter(job => !["queued", "running", "orphaned"].includes(job.status))
   .slice(-5)
   .reverse();
 let processingStatus = null;
 let processingStatusError = null;
 
-try {
-  const options = { vaultRoot: readOption("--vault-root") };
-  const report = process.argv.includes("--write-processing-status")
-    ? writeFreshnessReport(toolRoot, options)
-    : buildFreshnessReport(toolRoot, options);
-  processingStatus = summarizeFreshness(report);
-} catch (error) {
-  processingStatusError = error.message;
+if (!process.argv.includes("--queue-only")) {
+  try {
+    const options = { vaultRoot: readOption("--vault-root") };
+    const report = process.argv.includes("--write-processing-status")
+      ? writeFreshnessReport(toolRoot, options)
+      : buildFreshnessReport(toolRoot, options);
+    processingStatus = summarizeFreshness(report);
+  } catch (error) {
+    processingStatusError = error.message;
+  }
 }
 
+const model = process.argv.includes("--check-model")
+  ? await checkModel(config)
+  : null;
+
 const result = {
-  worker: {
-    status: running ? "running" : lock ? "stale-lock" : "not-running",
-    pid: Number.isInteger(pid) ? pid : null,
-    startedAt: lock?.startedAt ?? null,
-    lockFile: paths.lockFile
-  },
+  worker,
+  model,
   stopRequest,
   queue: {
     queued: activeJobs.filter(job => job.status === "queued").length,
     running: activeJobs.filter(job => job.status === "running").length,
+    orphaned: activeJobs.filter(job => job.status === "orphaned").length,
     active: activeJobs,
     recent: recentJobs
   },
@@ -168,6 +211,10 @@ if (process.argv.includes("--json")) {
   console.log(JSON.stringify(result, null, 2));
 } else {
   console.log(`Worker: ${result.worker.status}${result.worker.pid ? ` pid ${result.worker.pid}` : ""}`);
+
+  if (model) {
+    console.log(`Model: ${model.status} - ${model.reason}`);
+  }
 
   if (stopRequest) {
     console.log(`Stop after current: requested at ${stopRequest.requestedAt}`);

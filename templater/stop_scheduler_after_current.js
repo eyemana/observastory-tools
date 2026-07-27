@@ -108,7 +108,9 @@ module.exports = async () => {
     const outputLine = rawOutput.trim().split(/\r?\n/).filter(Boolean).pop();
     const result = JSON.parse(outputLine || "{}");
 
-    if (result.runningJobs?.length) {
+    if (result.status === "not-running") {
+      new Notice("Background scheduler is not running; no stop request was left behind.");
+    } else if (result.runningJobs?.length) {
       new Notice("Scheduler will stop after the current job finishes.");
     } else {
       new Notice("Scheduler stop-after-current requested.");

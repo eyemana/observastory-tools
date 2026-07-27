@@ -1,5 +1,5 @@
 module.exports = async () => {
-  const { spawn } = require("child_process");
+  const { execFileSync } = require("child_process");
   const fs = require("fs");
   const path = require("path");
 
@@ -96,32 +96,31 @@ module.exports = async () => {
   const toolsRoot = path.join(basePath, "observastory-tools");
   const scheduler = loadSchedulerConfig(toolsRoot);
   const nodePath = scheduler.nodePath || "node";
-  const workerScript = path.join(toolsRoot, "scheduler", "worker.mjs");
+  const startScript = path.join(toolsRoot, "scheduler", "start-worker.mjs");
 
   try {
-    const child = spawn(
+    const rawOutput = execFileSync(
       nodePath,
       [
-        workerScript,
-        "--watch"
+        startScript
       ],
       {
         cwd: toolsRoot,
-        detached: true,
-        stdio: "ignore",
+        encoding: "utf8",
         windowsHide: true
       }
     );
-
-    child.on("error", error => {
-      new Notice("Failed to start scheduler. Check scheduler.nodePath in config.local.json.");
-      console.error(error.message);
-    });
-
-    child.unref();
-    new Notice("Background scheduler started.");
+    const result = JSON.parse(rawOutput.trim().split(/\r?\n/).filter(Boolean).pop() || "{}");
+    if (result.status === "started") {
+      new Notice("Background scheduler started and verified.");
+    } else if (result.status === "already-running") {
+      new Notice("Background scheduler is already running.");
+    } else {
+      new Notice(result.message || "Background scheduler did not start.");
+    }
   } catch (error) {
-    new Notice("Failed to start scheduler. See developer console.");
+    new Notice("Background scheduler failed verification. See developer console.");
+    console.error(error.stdout?.toString() || "");
     console.error(error.stderr?.toString() || error.message);
   }
 
