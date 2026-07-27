@@ -25,7 +25,7 @@ function loadStudioContext(vaultRoot) {
   );
   const studioRoot = vaultRelativePath(
     vaultRoot,
-    config.studio?.root ?? "Observastory Studio"
+    config.studio?.root ?? "ObservaStory"
   );
 
   return {

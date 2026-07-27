@@ -16,6 +16,29 @@ function walk(directory) {
   });
 }
 
+function dataviewJsBlocks(markdown, filePath) {
+  const blocks = [];
+  let current = null;
+
+  for (const line of String(markdown).split(/\r?\n/)) {
+    if (current === null) {
+      if (/^```dataviewjs\s*$/.test(line)) current = [];
+      continue;
+    }
+    if (/^```\s*$/.test(line)) {
+      blocks.push(current.join("\n"));
+      current = null;
+      continue;
+    }
+    current.push(line);
+  }
+
+  if (current !== null) {
+    throw new Error(`Unclosed DataviewJS block in ${filePath}.`);
+  }
+  return blocks;
+}
+
 const scripts = walk(toolsRoot)
   .filter(filePath => /\.(?:mjs|cjs|js)$/.test(filePath));
 
@@ -33,17 +56,16 @@ for (const name of ["config.example.json", "config.local.json"]) {
 
 const config = loadConfig(toolsRoot);
 const vaultRoot = path.resolve(toolsRoot, "..");
-const studioRoot = path.resolve(vaultRoot, config.studio?.root ?? "Observastory Studio");
+const studioRoot = path.resolve(vaultRoot, config.studio?.root ?? "ObservaStory");
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 let studioBlocks = 0;
 
 if (fs.existsSync(studioRoot)) {
   for (const filePath of walk(studioRoot).filter(candidate => candidate.endsWith(".md"))) {
     const markdown = fs.readFileSync(filePath, "utf8");
-    const blocks = markdown.matchAll(/```dataviewjs\s*\n([\s\S]*?)```/g);
-    for (const match of blocks) {
+    for (const block of dataviewJsBlocks(markdown, filePath)) {
       try {
-        new AsyncFunction("dv", "app", "require", "Notice", "window", match[1]);
+        new AsyncFunction("dv", "app", "require", "Notice", "window", block);
       } catch (error) {
         throw new Error(`Invalid DataviewJS in ${filePath}: ${error.message}`);
       }

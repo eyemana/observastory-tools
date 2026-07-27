@@ -10,7 +10,7 @@
   // Interactive Dataview/Charts workspaces and lenses used by this POC.
   // Studio surfaces are tooling, not part of story.root.
   "studio": {
-    "root": "Observastory Studio"
+    "root": "ObservaStory"
   },
 
   "awareness": {

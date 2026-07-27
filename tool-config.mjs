@@ -5,7 +5,7 @@ export const defaultConfig = {
   ollamaUrl: "http://localhost:11434/api/generate",
   model: "qwen2.5:7b",
   studio: {
-    root: "Observastory Studio"
+    root: "ObservaStory"
   },
   awareness: {
     rationaleMode: "paraphrase",

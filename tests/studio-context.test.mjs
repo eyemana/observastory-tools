@@ -17,8 +17,8 @@ test("studio paths resolve within the vault independently of the story root", ()
       "Example Book/Scenes"
     );
     assert.equal(
-      vaultRelativePath(vaultRoot, "Observastory Studio"),
-      "Observastory Studio"
+      vaultRelativePath(vaultRoot, "ObservaStory"),
+      "ObservaStory"
     );
     assert.throws(
       () => vaultRelativePath(vaultRoot, path.resolve(vaultRoot, "..", "Archive")),

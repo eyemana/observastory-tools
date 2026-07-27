@@ -30,7 +30,7 @@ In practical terms:
 
 ## POC workspaces and lenses
 
-The POC implements Studio surfaces as Dataview and Charts notes in the vault-root `Observastory Studio` folder. They are tooling, not part of the configured book.
+The POC implements Studio surfaces as Dataview and Charts notes in the vault-root `ObservaStory` folder. They are tooling, not part of the configured book.
 
 - **Storyboard** is the scene and chapter arrangement workspace.
 - **Scene Development Map** is the selected-scene workspace with Craft, Story Movement, Information Flow, and Trajectories lenses.

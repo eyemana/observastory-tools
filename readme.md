@@ -33,7 +33,7 @@ Your Vault/
     templater/
     scheduler/
     evaluators/
-  Observastory Studio/
+  ObservaStory/
     Start Here.md
     Storyboard.md
     Scene Profile.md
@@ -59,7 +59,7 @@ For the tutorial, Studio and story locations are configured separately:
 
 ```json
 "studio": {
-  "root": "Observastory Studio"
+  "root": "ObservaStory"
 },
 "story": {
   "root": "Example Book - A Ledger for Maribel Leigh",
@@ -385,7 +385,7 @@ With that profile, only scenes and story elements tagged `harbor-experiment` are
 
 ## Storyboard
 
-Open `Observastory Studio/Storyboard.md` in Obsidian.
+Open `ObservaStory/Storyboard.md` in Obsidian.
 
 ![Storyboard overview](docs/images/storyboard-overview.png)
 
@@ -403,7 +403,7 @@ The second selector controls the data lens:
 
 character checkboxes filter the visible scenes. The checkbox colors match the Storyboard color language.
 
-Open `Observastory Studio/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This workspace is read-only and sorts by `ai.chronology.sort`.
+Open `ObservaStory/Chronology Storyboard.md` to view scenes by generated chronology for a selected character, plot thread, or arc. This workspace is read-only and sorts by `ai.chronology.sort`.
 
 ### Scene Tiles
 
@@ -630,7 +630,7 @@ Awareness evaluators use the generated support map as grounding. reader awarenes
 
 ## Observastory Studio
 
-Studio workspaces and lenses live in the vault-root `Observastory Studio` folder. They are narrative development tooling, not part of the configured story root.
+Studio workspaces and lenses live in the vault-root `ObservaStory` folder. They are narrative development tooling, not part of the configured story root.
 
 Most Studio surfaces use Dataview or DataviewJS to read scene frontmatter and render tables or charts. They do not run evaluations themselves unless they expose an explicit author-invoked action. The internal compatibility module `report-catalog.cjs` merges configured evaluation axes with canonical observations so the primary lenses discover new entity types, dimensions, and observer perspectives without source edits.
 
@@ -775,7 +775,7 @@ Run only reader awareness from Obsidian with `Templates/Queue-Evaluation-Reader-
 
 ## Processing Status and Stale Work
 
-`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `Observastory Studio/Processing Status.md`.
+`Templates/Scheduler-Status.md` refreshes `observastory-tools/.index/processing-status.json`, which is displayed by `ObservaStory/Processing Status.md`.
 
 The status index compares author-owned fingerprints instead of modification times:
 
